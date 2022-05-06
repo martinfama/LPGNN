@@ -11,7 +11,7 @@ import scipy.optimize
 import pandas as pd
 import copy
 import time
-from metrics import *
+from .metrics import *
 
 class Network(object):
     def __init__(self, **kwargs):

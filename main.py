@@ -1,13 +1,13 @@
 import numpy as np
-import network_analysis as na
+from src import network_analysis as na
 
 import torch
 import torch_geometric as pyg
 
-import DataSetup
-import GraphNeuralNet
-import LinkPrediction
-import Logger
+from src import DataSetup
+from src import GraphNeuralNet
+from src import LinkPrediction
+from src import Logger
 
 import matplotlib.pyplot as plt
 

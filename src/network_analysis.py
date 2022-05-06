@@ -6,7 +6,7 @@ import matplotlib as mpl
 import scipy
 import scipy.optimize
 import collections
-import network_generator as ng
+from . import network_generator as ng
 
 import copy
 
@@ -19,9 +19,9 @@ import sklearn.svm
 import sklearn.neighbors
 from sklearn.metrics import PrecisionRecallDisplay
 
-from metrics import *
+from .metrics import *
 
-import debug_print
+from . import debug_print
 
 #power law function. used to determine a scale free network's scaling exponent, gamma.
 def power_law(x, A, gamma):

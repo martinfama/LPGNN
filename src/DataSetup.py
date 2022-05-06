@@ -2,7 +2,7 @@ import torch_geometric.transforms as pyg_T
 import torch_geometric.data as pyg_data
 import torch_geometric as pyg
 import torch
-import network_generator as ng
+from . import network_generator as ng
 import networkx as nx
 import numpy as np
 
