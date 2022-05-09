@@ -1,6 +1,26 @@
 import numpy as np
 import torch
 
+import matplotlib.pyplot as plt
+
+def PlotPRCurves(PR_list, save_name=''):
+    ## Plot results, and log
+    fig, ax = plt.subplots(figsize=(10, 10))
+    ax.grid(alpha=0.5)
+    ax.set_xlabel('Recall')
+    ax.set_ylabel('Precision')
+    for PR in PR_list:
+        ax.plot(PR['recall'], PR['precision'], label=PR['label'])
+    #ax.plot(PR_LaBNE['recall'], PR_LaBNE['precision'], label='LaBNE')
+    #ax.plot(R_SAGE, P_SAGE, label='GraphSAGE')
+    #ax.plot(R_SAGE_all, P_SAGE_all, label='GraphSAGE+Attr')
+    ax.legend(loc='upper right')
+
+    #ax.set_title(f'PS network: N={N}, avg_k={avg_k}, gamma={gamma}, Temp={Temp}, seed={seed}')
+
+    fig.savefig('./figs/PR/'+save_name+'.pdf', bbox_inches='tight')
+    plt.close()
+
 def PrecisionRecall(test_data, predictions):
     """Generates a Precision-Recall curve, given the predictions 
     and the test data. tp (true positive) cases are added until 
