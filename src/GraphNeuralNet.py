@@ -3,7 +3,11 @@ import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+import torch_geometric as pyg
 import torch_geometric.nn as pyg_nn
+
+from src import network_analysis as na
+from src import LinkPrediction
 
 device = 'cpu'
 
@@ -47,6 +51,41 @@ def train_model(model, optimizer, train_data, test_data, val_data, epochs=100):
     for epoch in range(1, epochs+1):
         train_loss = train(model, optimizer, train_data)
     return train_loss
+
+
+def LaBNE(PS, test):
+    ## Generate LaBNE embedding and Precision-Recall on it
+    PS_train = PS.copy()
+    test_edges = np.transpose(test.pos_edge_label_index)
+    PS_train.delete_edges([(x[0], x[1]) for x in test_edges])
+    PR_LaBNE = na.precision_recall_snapshots(PS_train, PS, metric='LaBNE', step=1, plot=False)
+    PR_LaBNE['label'] = 'LaBNE'
+    return PR_LaBNE
+
+def GraphSAGE(data, train, test, val, epochs, **kargs):
+    ## GraphSAGE model and PR on it
+    graphSAGE_model = pyg.nn.GraphSAGE(in_channels=data.num_features, hidden_channels=128, out_channels=32, num_layers=3)
+    optimizer = torch.optim.SGD(graphSAGE_model.parameters(), lr=0.01)
+
+    print(f'Training model: {graphSAGE_model} for {epochs} epochs')
+    loss = train_model(model=graphSAGE_model, optimizer=optimizer, train_data=train, test_data=test, val_data=val, epochs=epochs)
+    print(f'Train loss: {loss}')
+    R_SAGE, P_SAGE, predictions = LinkPrediction.PrecisionRecallTrainedModel(model=graphSAGE_model, train_data=train, test_data=test)
+    _ = {'recall': R_SAGE, 'precision': P_SAGE, 'label': 'GraphSAGE'}
+    return _
+
+def PNA(data, train, test, val, epochs, **kargs):
+    ## PNA model and PR on it
+    deg = torch.Tensor(pyg.utils.degree(train.edge_index[0], train.num_nodes))
+    pna_model = pyg.nn.PNA(in_channels=data.num_features, hidden_channels=128, out_channels=32, num_layers=3, aggregators=['mean', 'max', 'sum', 'std'], scalers=['identity', 'linear'], deg=deg)
+    optimizer = torch.optim.SGD(pna_model.parameters(), lr=0.01)
+
+    print(f'Training model: {pna_model} for {epochs} epochs')
+    loss = train_model(model=pna_model, optimizer=optimizer, train_data=train, test_data=test, val_data=val, epochs=epochs)
+    print(f'Train loss: {loss}')
+    R_PNA, P_PNA, predictions = LinkPrediction.PrecisionRecallTrainedModel(model=pna_model, train_data=train, test_data=test)
+    _ = {'recall': R_PNA, 'precision': P_PNA, 'label': 'PNA'}
+    return _
 
 # class Shallownet(nn.Module):
 #     r"""

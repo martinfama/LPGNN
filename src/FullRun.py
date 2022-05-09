@@ -19,27 +19,6 @@ def NormalizeArray(v):
         norm=np.finfo(v.dtype).eps
     return v / norm
 
-def LaBNE(PS, test):
-    ## Generate LaBNE embedding and Precision-Recall on it
-    PS_train = PS.copy()
-    test_edges = np.transpose(test.pos_edge_label_index)
-    PS_train.delete_edges([(x[0], x[1]) for x in test_edges])
-    PR_LaBNE = na.precision_recall_snapshots(PS_train, PS, metric='LaBNE', step=1, plot=False)
-    PR_LaBNE['label'] = 'LaBNE'
-    return PR_LaBNE
-
-def GraphSAGE(data, train, test, val, epochs, **kargs):
-    ## GraphSAGE model and PR on it
-    graphSAGE_model = pyg.nn.GraphSAGE(in_channels=data.num_features, hidden_channels=128, out_channels=32, num_layers=3)
-    optimizer = torch.optim.SGD(graphSAGE_model.parameters(), lr=0.01)
-
-    print(f'Training model: {graphSAGE_model} for {epochs} epochs')
-    loss = GraphNeuralNet.train_model(model=graphSAGE_model, optimizer=optimizer, train_data=train, test_data=test, val_data=val, epochs=epochs)
-    print(f'Train loss: {loss}')
-    R_SAGE, P_SAGE, predictions = LinkPrediction.PrecisionRecallTrainedModel(model=graphSAGE_model, train_data=train, test_data=test)
-    _ = {'recall': R_SAGE, 'precision': P_SAGE, 'label': 'GraphSAGE'}
-    return _
-
 def FullRun(**kargs):
     """Run a complete test, including training, testing and logging. Should accept network characteristics,
     and models to use. 
@@ -80,17 +59,20 @@ def FullRun(**kargs):
     ## Split the data into train, test and validation sets
     train, val, test = DataSetup.TrainTestSplit(data, test_ratio=0.1, val_ratio=0.1, neg_samples=True)
 
+    PR_list = []
     for model in options['models']:
-        if model == 'GraphSAGE':
-            PR_SAGE = GraphSAGE(data, train, test, val, options['epochs'])
         if model == 'LaBNE':
-            PR_LaBNE = LaBNE(PS, test)
+            PR_list.append(GraphNeuralNet.LaBNE(PS, test))
+        if model == 'GraphSAGE':
+            PR_list.append(GraphNeuralNet.GraphSAGE(data, train, test, val, options['epochs']))
+        if model == 'PNA':
+            PR_list.append(GraphNeuralNet.PNA(data, train, test, val, options['epochs']))
 
     ## Plot the results and save them
     if options['save_name'] == 'default':
         save_name = f'{options["N"]}_{options["avg_k"]}_{options["gamma"]}_{options["Temp"]}_{options["seed"]}'
     else:
         save_name = options['save_name']
-    LinkPrediction.PlotPRCurves(PR_list=[PR_SAGE, PR_LaBNE], save_name=save_name)
+    LinkPrediction.PlotPRCurves(PR_list=PR_list, save_name=save_name)
 
     return

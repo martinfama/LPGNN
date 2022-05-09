@@ -14,5 +14,5 @@ from src import FullRun
 import matplotlib.pyplot as plt
 
 ## Plot results, and log
-FullRun.FullRun(N=100, avg_k=10, gamma=2.2, Temp=0.1, seed=100, models=['LaBNE', 'GraphSAGE'], epochs=100, attributes=['degree_centrality'],
-                save_name='default')
+FullRun.FullRun(N=104, avg_k=10, gamma=2.2, Temp=0.1, seed=100, models=['LaBNE', 'GraphSAGE', 'PNA'], epochs=100, 
+                attributes=['degree_centrality', 'betweenness_centrality', 'closeness_centrality'], save_name='default')
