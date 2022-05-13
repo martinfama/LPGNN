@@ -24,9 +24,33 @@ def getPSNetwork(N, avg_k, gamma, Temp, seed):
     """
     PS_nx, PS = ng.generatePSNetwork_nx(N=N, avg_k=avg_k, gamma=gamma, Temp=Temp, seed=seed)
     data = pyg.utils.from_networkx(PS_nx)
-    data.x = torch.Tensor(np.transpose([list(nx.degree_centrality(PS_nx).values()), 
-                                        list(nx.betweenness_centrality(PS_nx).values())]))
     return PS, PS_nx, data
+
+def getBarabasiNetwork(N, M):
+    """Generate a Barabasi-Albert network
+
+    Args:
+        N (int): Number of nodes
+        M (int): Number of connections new nodes should establish
+    Returns:
+    tuple: A tuple containing the three network types: (igraph, networkx, torch).
+    """
+    G_nx, G = ng.generateBarabasiNetwork(N=N, M=M)
+    data = pyg.utils.from_networkx(G_nx)
+    return G, G_nx, data
+
+def getErdos_RenyiNetwork(N, p):
+    """Generate a Erdos-Renyi network
+
+    Args:
+        N (int): Number of nodes
+        p (float): Probability of link creation
+    Returns:
+    tuple: A tuple containing the three network types: (igraph, networkx, torch).
+    """
+    G_nx, G = ng.generateErdos_RenyiNetwork(N=N, p=p)
+    data = pyg.utils.from_networkx(G_nx)
+    return G, G_nx, data
 
 def TrainTestSplit(data, test_ratio, val_ratio, neg_samples=False):
     """Split a data graph object (``torch.Tensor``) into train, test and validation sets of edges.

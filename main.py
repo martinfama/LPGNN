@@ -1,3 +1,4 @@
+from operator import attrgetter
 import numpy as np
 from src import network_analysis as na
 import networkx as nx
@@ -14,5 +15,12 @@ from src import FullRun
 import matplotlib.pyplot as plt
 
 ## Plot results, and log
-FullRun.FullRun(N=104, avg_k=10, gamma=2.2, Temp=0.1, seed=100, models=['LaBNE', 'GraphSAGE', 'PNA'], epochs=100, 
-                attributes=['degree_centrality', 'betweenness_centrality', 'closeness_centrality'], save_name='default')
+
+FullRun.FullRun(graph_type='PS', N=500, avg_k=6, gamma=2.5, Temp=0.0, seed=100, models=['LaBNE', 'CN', 'GraphSAGE', 'PNA'], epochs=70, 
+                 attributes=['degree_centrality'], save_name='default')
+
+# FullRun.FullRun(graph_type='Barabasi', N=300, M=4, models=['LaBNE', 'CN', 'GraphSAGE', 'PNA'], epochs=20, 
+#                 attributes=['degree_centrality', 'betweenness_centrality', 'closeness_centrality'], save_name='default')
+
+# FullRun.FullRun(graph_type='Erdos-Renyi', N=300, p=0.05, models=['LaBNE', 'CN', 'GraphSAGE', 'PNA'], epochs=20,
+#                 attributes=['degree_centrality', 'betweenness_centrality', 'closeness_centrality'], save_name='default')

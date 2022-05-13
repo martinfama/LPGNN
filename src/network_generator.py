@@ -92,7 +92,6 @@ class Network(object):
     def common_neighbors(self, i=int, j=int):
         return len(set(self.graph.neighbors(i)).intersection(self.graph.neighbors(j)))/np.sqrt(self.graph.degree(i)*self.graph.degree(j))
 
-
 #generate a network according to the PS model       #seed is for randomness
 def generatePSNetwork(N=0, avg_k=0, gamma=0, Temp=0, seed=0):
 
@@ -356,3 +355,13 @@ def generatePSNetwork_nx(N=0, avg_k=0, gamma=0, Temp=0, seed=0):
     PS = generatePSNetwork(N=200, avg_k=16, gamma=2.5, Temp=0.1, seed=400)
     PS_nx = nx.Graph(PS.get_edgelist(), pos=np.transpose([PS.vs['x'], PS.vs['y']]), color=PS.vs['color'], size=PS.vs['size'])
     return PS_nx, PS
+
+def generateBarabasiNetwork(N=0, M=0):
+    G_nx = nx.barabasi_albert_graph(N, M)
+    G = igraph.Graph(list(G_nx.edges()))
+    return G_nx, G
+
+def generateErdos_RenyiNetwork(N=0, p=0):
+    G_nx = nx.erdos_renyi_graph(N, p, directed=False)
+    G = igraph.Graph(list(G_nx.edges()))
+    return G_nx, G

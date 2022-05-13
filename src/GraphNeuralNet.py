@@ -50,8 +50,18 @@ def train_model(model, optimizer, train_data, test_data, val_data, epochs=100):
     best_val_perf = test_perf = 0
     for epoch in range(1, epochs+1):
         train_loss = train(model, optimizer, train_data)
+        print(f'{train_loss:.2f}...', end='')
+    print('')
     return train_loss
 
+def CN(PS, test):
+    ## Use Common-Neighbours for Precision-Recall 
+    PS_train = PS.copy()
+    test_edges = np.transpose(test.pos_edge_label_index)
+    PS_train.delete_edges([(x[0], x[1]) for x in test_edges])
+    PR_CN = na.precision_recall_snapshots(PS_train, PS, metric='CN', step=1, plot=False)
+    PR_CN['label'] = 'CN'
+    return PR_CN
 
 def LaBNE(PS, test):
     ## Generate LaBNE embedding and Precision-Recall on it
@@ -64,8 +74,8 @@ def LaBNE(PS, test):
 
 def GraphSAGE(data, train, test, val, epochs, **kargs):
     ## GraphSAGE model and PR on it
-    graphSAGE_model = pyg.nn.GraphSAGE(in_channels=data.num_features, hidden_channels=128, out_channels=32, num_layers=3)
-    optimizer = torch.optim.SGD(graphSAGE_model.parameters(), lr=0.01)
+    graphSAGE_model = pyg.nn.GraphSAGE(in_channels=data.num_features, hidden_channels=32, out_channels=16, num_layers=5)
+    optimizer = torch.optim.SGD(graphSAGE_model.parameters(), lr=0.001)
 
     print(f'Training model: {graphSAGE_model} for {epochs} epochs')
     loss = train_model(model=graphSAGE_model, optimizer=optimizer, train_data=train, test_data=test, val_data=val, epochs=epochs)
@@ -77,8 +87,8 @@ def GraphSAGE(data, train, test, val, epochs, **kargs):
 def PNA(data, train, test, val, epochs, **kargs):
     ## PNA model and PR on it
     deg = torch.Tensor(pyg.utils.degree(train.edge_index[0], train.num_nodes))
-    pna_model = pyg.nn.PNA(in_channels=data.num_features, hidden_channels=128, out_channels=32, num_layers=3, aggregators=['mean', 'max', 'sum', 'std'], scalers=['identity', 'linear'], deg=deg)
-    optimizer = torch.optim.SGD(pna_model.parameters(), lr=0.01)
+    pna_model = pyg.nn.PNA(in_channels=data.num_features, hidden_channels=32, out_channels=16, num_layers=3, aggregators=['mean', 'max', 'sum', 'std'], scalers=['identity', 'linear'], deg=deg)
+    optimizer = torch.optim.SGD(pna_model.parameters(), lr=0.001)
 
     print(f'Training model: {pna_model} for {epochs} epochs')
     loss = train_model(model=pna_model, optimizer=optimizer, train_data=train, test_data=test, val_data=val, epochs=epochs)
