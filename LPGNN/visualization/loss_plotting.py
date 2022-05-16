@@ -16,7 +16,7 @@ def plot_losses_vs_epochs(pr_dict, save_name=None):
     ax.grid(alpha=0.5)
 
     for key, loss in pr_dict['losses'].items():
-        if key != 'epochs':
+        if key != 'epochs' and key != 'test loss':
             ax.plot(pr_dict['losses']['epochs'], pr_dict['losses'][key], label=f'Loss {key}')
     
     ax.legend(loc='upper right')

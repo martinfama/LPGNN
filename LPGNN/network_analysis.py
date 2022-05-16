@@ -105,13 +105,14 @@ def inferred_angles(PS_graph=None, LaBNE_graph=None, colors=False, c='black'):
 
 def precision_recall_snapshots(snapshot_t0 = igraph.Graph(), snapshot_t1 = igraph.Graph(), metric=None, step=1, plot=False):
     
+    """
     if snapshot_t0.vcount() != snapshot_t1.vcount():
         raise ValueError('Snapshot t0 and snapshot t1 have different vertex counts.')
     if snapshot_t0.is_connected() == False:
         raise ValueError('Snapshot t0 is not connected.')
     if snapshot_t1.is_connected() == False:
         raise ValueError('Snapshot t1 is not connected.')
-
+    """
     N = snapshot_t0.vcount()
     
     # create copy of the first snapshot, to be used as training graph

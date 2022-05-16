@@ -352,7 +352,7 @@ def node_size_by_degree(graph=None, m=1):
     return m*2*np.log(np.array(graph.degree())+np.full(graph.vcount(), 2))*np.log(np.e+100/graph.vcount())
 
 def generatePSNetwork_nx(N=0, avg_k=0, gamma=0, Temp=0, seed=0):
-    PS = generatePSNetwork(N=200, avg_k=16, gamma=2.5, Temp=0.1, seed=400)
+    PS = generatePSNetwork(N=N, avg_k=avg_k, gamma=gamma, Temp=Temp, seed=seed)
     PS_nx = nx.Graph(PS.get_edgelist(), pos=np.transpose([PS.vs['x'], PS.vs['y']]), color=PS.vs['color'], size=PS.vs['size'])
     return PS_nx, PS
 

@@ -4,7 +4,8 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torch_geometric as pyg
-import torch_geometric.nn as pyg_nn
+from torch.nn import init
+import pdb
 
 import LPGNN.network_analysis as na
 import LPGNN.LinkPrediction as LinkPrediction
@@ -13,9 +14,9 @@ device = 'cpu'
 
 # Convert the models output to a logit matrix
 def decode(z, pos_edge_index, neg_edge_index):
-    #edge_index = torch.cat([pos_edge_index, neg_edge_index], dim=1)
-    #logits = (z[edge_index[0]] * z[edge_index[1]]).sum(dim=1)
-    logits = (z[pos_edge_index[0]] * z[pos_edge_index[1]]).sum(dim=1)
+    edge_index = torch.cat([pos_edge_index, neg_edge_index], dim=1)
+    logits = (z[edge_index[0]] * z[edge_index[1]]).sum(dim=1)
+    #logits = (z[pos_edge_index[0]] * z[pos_edge_index[1]]).sum(dim=1)
     return logits
 
 def get_link_labels(pos_edge_index, neg_edge_index):
@@ -23,10 +24,10 @@ def get_link_labels(pos_edge_index, neg_edge_index):
     # [1,1,1,1,...,0,0,0,0,0,..] where the number of ones is equal to the length of 
     # pos_edge_index and the number of zeros is equal to the length of neg_edge_index
     
-    # E = pos_edge_index.size(1) + neg_edge_index.size(1)
-    E = pos_edge_index.size(1)
-    link_labels = torch.ones(E, dtype=torch.float, device=device)
-    #link_labels[:pos_edge_index.size(1)] = 1.
+    E = pos_edge_index.size(1) + neg_edge_index.size(1)
+    #E = pos_edge_index.size(1)
+    link_labels = torch.zeros(E, dtype=torch.float, device=device)
+    link_labels[:pos_edge_index.size(1)] = 1.
     return link_labels
 
 # One epoch of training
@@ -50,26 +51,28 @@ def train(model, optimizer, train_data):
 
 def test(model, optimizer, test_data):
     model.eval()
-    z = model.forward(test_data.x, test_data.pos_edge_label_index)
-    link_logits = decode(z, test_data.pos_edge_label_index, test_data.neg_edge_label_index)
-    link_labels = get_link_labels(test_data.pos_edge_label_index, test_data.neg_edge_label_index)
-    loss = nn.functional.binary_cross_entropy_with_logits(link_logits, link_labels)
+    with torch.no_grad():
+        z = model.forward(test_data.x, test_data.pos_edge_label_index)
+        link_logits = decode(z, test_data.pos_edge_label_index, test_data.neg_edge_label_index)
+        link_labels = get_link_labels(test_data.pos_edge_label_index, test_data.neg_edge_label_index)
+        loss = nn.functional.binary_cross_entropy_with_logits(link_logits, link_labels)
     return loss
 
 # Train a model on a dataset, and return the loss
 def train_model(model, optimizer, train_data, test_data, val_data, epochs=100):
     
     train_loss = []
-    test_loss = []
+    val_loss = []
     
-    print(f' Epoch | Train loss | Test loss')
+    print(f' Epoch | Train loss | Val loss')
     print(f'-------|------------|-----------')
     for epoch in range(1, epochs+1):
         train_loss.append(train(model, optimizer, train_data))
-        test_loss.append(test(model, optimizer, test_data))
-        print(f'----{epoch:04}----|---{train_loss[-1]:.3f}---|---{test_loss[-1]:.3f}---')
+        val_loss.append(test(model, optimizer, val_data))
+        print(f'----{epoch:04}----|---{train_loss[-1]:.3f}---|---{val_loss[-1]:.3f}---')
     print('')
-    return {"epochs":range(1, epochs+1), "train loss":train_loss, "test loss":test_loss}
+    test_loss = test(model, optimizer, test_data)
+    return {"epochs":range(1, epochs+1), "train loss":train_loss, "val loss":val_loss, "test loss":test_loss}
 
 def CN(PS, test):
     ## Use Common-Neighbours for Precision-Recall 
@@ -89,13 +92,14 @@ def LaBNE(PS, test):
     PR_LaBNE['label'] = 'LaBNE'
     return PR_LaBNE
 
-def GraphSAGE(data, train, test, val, epochs, **kargs):
+def GraphSAGE(data, train, test, val, epochs):
     ## GraphSAGE model and PR on it
-    graphSAGE_model = pyg.nn.GraphSAGE(in_channels=data.num_features, hidden_channels=32, out_channels=16, num_layers=3)
-    optimizer = torch.optim.SGD(graphSAGE_model.parameters(), lr=0.001)
+    graphSAGE_model = pyg.nn.GraphSAGE(in_channels=data.num_features, hidden_channels=32, out_channels=16, num_layers=3, dropout=0.1, act=torch.nn.Sigmoid(), jk='cat')
+    optimizer = torch.optim.SGD(graphSAGE_model.parameters(), lr=0.01)
 
     print(f'Training model: {graphSAGE_model} for {epochs} epochs')
     loss = train_model(model=graphSAGE_model, optimizer=optimizer, train_data=train, test_data=test, val_data=val, epochs=epochs)
+    print("Test loss:", loss['test loss'])
     R_SAGE, P_SAGE, predictions = LinkPrediction.precision_recall_trained_model(model=graphSAGE_model, train_data=train, test_data=test)
     _ = {'recall': R_SAGE, 'precision': P_SAGE, 'label': 'GraphSAGE', 'losses': loss}
     return _
@@ -104,13 +108,112 @@ def PNA(data, train, test, val, epochs, **kargs):
     ## PNA model and PR on it
     deg = torch.Tensor(pyg.utils.degree(train.edge_index[0], train.num_nodes))
     pna_model = pyg.nn.PNA(in_channels=data.num_features, hidden_channels=32, out_channels=16, num_layers=3, aggregators=['mean', 'max', 'sum', 'std'], scalers=['identity', 'linear'], deg=deg)
-    optimizer = torch.optim.SGD(pna_model.parameters(), lr=0.001)
+    optimizer = torch.optim.SGD(pna_model.parameters(), lr=0.01)
 
     print(f'Training model: {pna_model} for {epochs} epochs')
     loss = train_model(model=pna_model, optimizer=optimizer, train_data=train, test_data=test, val_data=val, epochs=epochs)
+    print("Test loss:", loss['test loss'])
     R_PNA, P_PNA, predictions = LinkPrediction.precision_recall_trained_model(model=pna_model, train_data=train, test_data=test)
     _ = {'recall': R_PNA, 'precision': P_PNA, 'label': 'PNA', 'losses': loss}
     return _
+
+### Non linearity
+class Nonlinear(nn.Module):
+    def __init__(self, input_dim, hidden_dim, output_dim):
+        super(Nonlinear, self).__init__()
+
+        self.linear1 = nn.Linear(input_dim, hidden_dim)
+        self.linear2 = nn.Linear(hidden_dim, output_dim)
+
+        self.act = nn.ReLU()
+
+        for m in self.modules():
+            if isinstance(m, nn.Linear):
+                m.weight.data = init.xavier_uniform_(m.weight.data, gain=nn.init.calculate_gain('relu'))
+                if m.bias is not None:
+                    m.bias.data = init.constant_(m.bias.data, 0.0)
+
+    def forward(self, x):
+        x = self.linear1(x)
+        x = self.act(x)
+        x = self.linear2(x)
+        return x
+
+class PGNN_layer(nn.Module):
+    def __init__(self, input_dim, output_dim,dist_trainable=True):
+        super(PGNN_layer, self).__init__()
+        self.input_dim = input_dim
+        self.dist_trainable = dist_trainable
+
+        if self.dist_trainable:
+            self.dist_compute = Nonlinear(1, output_dim, 1)
+
+        self.linear_hidden = nn.Linear(input_dim*2, output_dim)
+        self.linear_out_position = nn.Linear(output_dim,1)
+        self.act = nn.ReLU()
+
+        for m in self.modules():
+            if isinstance(m, nn.Linear):
+                m.weight.data = init.xavier_uniform_(m.weight.data, gain=nn.init.calculate_gain('relu'))
+                if m.bias is not None:
+                    m.bias.data = init.constant_(m.bias.data, 0.0)
+
+    def forward(self, feature, dists_max, dists_argmax):
+        if self.dist_trainable:
+            dists_max = self.dist_compute(dists_max.unsqueeze(-1)).squeeze()
+
+        subset_features = feature[dists_argmax.flatten(), :]
+        subset_features = subset_features.reshape((dists_argmax.shape[0], dists_argmax.shape[1],
+                                                   feature.shape[1]))
+        messages = subset_features * dists_max.unsqueeze(-1)
+
+        self_feature = feature.unsqueeze(1).repeat(1, dists_max.shape[1], 1)
+        messages = torch.cat((messages, self_feature), dim=-1)
+
+        messages = self.linear_hidden(messages).squeeze()
+        messages = self.act(messages) # n*m*d
+
+        out_position = self.linear_out_position(messages).squeeze(-1)  # n*m_out
+        out_structure = torch.mean(messages, dim=1)  # n*d
+
+        return out_position, out_structure
+
+class PGNN(torch.nn.Module):
+    def __init__(self, input_dim, feature_dim, hidden_dim, output_dim,
+                 feature_pre=True, layer_num=2, dropout=True, **kwargs):
+        super(PGNN, self).__init__()
+        self.feature_pre = feature_pre
+        self.layer_num = layer_num
+        self.dropout = dropout
+        if layer_num == 1:
+            hidden_dim = output_dim
+        if feature_pre:
+            self.linear_pre = nn.Linear(input_dim, feature_dim)
+            self.conv_first = PGNN_layer(feature_dim, hidden_dim)
+        else:
+            self.conv_first = PGNN_layer(input_dim, hidden_dim)
+        if layer_num>1:
+            self.conv_hidden = nn.ModuleList([PGNN_layer(hidden_dim, hidden_dim) for i in range(layer_num - 2)])
+            self.conv_out = PGNN_layer(hidden_dim, output_dim)
+
+    def forward(self, data):
+        x = data.x
+        if self.feature_pre:
+            x = self.linear_pre(x)
+        x_position, x = self.conv_first(x, data.dists_max, data.dists_argmax)
+        if self.layer_num == 1:
+            return x_position
+        # x = F.relu(x) # Note: optional!
+        if self.dropout:
+            x = F.dropout(x, training=self.training)
+        for i in range(self.layer_num-2):
+            _, x = self.conv_hidden[i](x, data.dists_max, data.dists_argmax)
+            # x = F.relu(x) # Note: optional!
+            if self.dropout:
+                x = F.dropout(x, training=self.training)
+        x_position, x = self.conv_out(x, data.dists_max, data.dists_argmax)
+        x_position = F.normalize(x_position, p=2, dim=-1)
+        return x_position
 
 # class Shallownet(nn.Module):
 #     r"""
