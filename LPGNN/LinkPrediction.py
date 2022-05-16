@@ -3,7 +3,7 @@ import torch
 
 import matplotlib.pyplot as plt
 
-def PlotPRCurves(PR_list, save_name=''):
+def plot_pr_curves(PR_list, save_name=''):
     ## Plot results, and log
     fig, ax = plt.subplots(figsize=(10, 10))
     ax.grid(alpha=0.5)
@@ -21,7 +21,7 @@ def PlotPRCurves(PR_list, save_name=''):
     fig.savefig('./figs/PR/'+save_name+'.pdf', bbox_inches='tight')
     plt.close()
 
-def PrecisionRecall(test_data, predictions):
+def precision_recall(test_data, predictions):
     """Generates a Precision-Recall curve, given the predictions 
     and the test data. tp (true positive) cases are added until 
     recall is 1 (tp == test_pos_edge_cases).
@@ -51,7 +51,7 @@ def PrecisionRecall(test_data, predictions):
             break
     return R, P, predictions
 
-def PrecisionRecallTrainedModel(model, train_data, test_data):
+def precision_recall_trained_model(model, train_data, test_data):
     """Generates a Precision-Recall curve, given the trained model, train data and test data.
     For now, this assumes the model generates a per-node feature vector (``z``), and uses that
     to generate a probability matrix (``prob_adj``) which indicates the probability of an edge 
@@ -80,4 +80,4 @@ def PrecisionRecallTrainedModel(model, train_data, test_data):
     # sort the list by probability
     prob_list = sorted(prob_list, key=lambda x: x[2], reverse=True)
     print("Probability list length: ", prob_list.__len__())
-    return PrecisionRecall(test_data, prob_list)
+    return precision_recall(test_data, prob_list)

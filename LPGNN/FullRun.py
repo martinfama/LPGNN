@@ -1,15 +1,16 @@
 import optparse
 import numpy as np
-from src import network_analysis as na
+import LPGNN.network_analysis as na
 import networkx as nx
 
 import torch
 import torch_geometric as pyg
 
-from src import DataSetup
-from src import GraphNeuralNet
-from src import LinkPrediction
-from src import Logger
+import LPGNN.visualization.loss_plotting as loss_plotting
+import LPGNN.DataSetup as DataSetup
+import LPGNN.GraphNeuralNet as GraphNeuralNet
+import LPGNN.LinkPrediction as LinkPrediction
+import LPGNN.Logger as Logger
 
 import matplotlib.pyplot as plt
 
@@ -47,11 +48,11 @@ def FullRun(**kargs):
     
     ## Generate a PS network. For now, we will use the three type of networks: igraph, networkx and PyG
     if options['graph_type'] == 'PS':
-        G, G_nx, data = DataSetup.getPSNetwork(N=options['N'], avg_k=options['avg_k'], gamma=options['gamma'], Temp=options['Temp'], seed=options['seed'])
+        G, G_nx, data = DataSetup.get_ps_network(N=options['N'], avg_k=options['avg_k'], gamma=options['gamma'], Temp=options['Temp'], seed=options['seed'])
     elif options['graph_type'] == 'Barabasi':
-        G, G_nx, data = DataSetup.getBarabasiNetwork(N=options['N'], M=options['M'])
+        G, G_nx, data = DataSetup.get_barabasi_network(N=options['N'], M=options['M'])
     elif options['graph_type'] == 'Erdos-Renyi':
-        G, G_nx, data = DataSetup.getErdos_RenyiNetwork(N=options['N'], p=options['p'])
+        G, G_nx, data = DataSetup.get_erdos_renyi_network(N=options['N'], p=options['p'])
 
     ## Attributes to include in data.x (if any), for the GNN's to use
     if options['attributes'] is not None:
@@ -70,9 +71,9 @@ def FullRun(**kargs):
             _.append( list(nx.closeness_centrality(G_nx).values()) )
 
         data.x = torch.tensor(np.transpose(_), dtype=torch.float)
-        print(data.x.shape)
+        
     ## Split the data into train, test and validation sets
-    train, val, test = DataSetup.TrainTestSplit(data, test_ratio=0.1, val_ratio=0.1, neg_samples=True)
+    train, val, test = DataSetup.train_test_split(data, test_ratio=0.1, val_ratio=0.1, neg_samples=True)
 
     PR_list = []
     for model in options['models']:
@@ -82,14 +83,18 @@ def FullRun(**kargs):
             PR_list.append(GraphNeuralNet.CN(G, test))
         if model == 'GraphSAGE':
             PR_list.append(GraphNeuralNet.GraphSAGE(data, train, test, val, options['epochs']))
+            loss_plotting.plot_losses_vs_epochs(PR_list[-1])
         if model == 'PNA':
             PR_list.append(GraphNeuralNet.PNA(data, train, test, val, options['epochs']))
+            loss_plotting.plot_losses_vs_epochs(PR_list[-1])
+    plt.show()
 
     ## Plot the results and save them
     if options['save_name'] == 'default':
         save_name = f'{options["graph_type"]}_{options["N"]}'
     else:
         save_name = options['save_name']
-    LinkPrediction.PlotPRCurves(PR_list=PR_list, save_name=save_name)
+    
+    LinkPrediction.plot_pr_curves(PR_list=PR_list, save_name=save_name)
 
     return

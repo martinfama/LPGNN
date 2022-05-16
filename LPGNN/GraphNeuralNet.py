@@ -6,8 +6,8 @@ import torch.nn.functional as F
 import torch_geometric as pyg
 import torch_geometric.nn as pyg_nn
 
-from src import network_analysis as na
-from src import LinkPrediction
+import LPGNN.network_analysis as na
+import LPGNN.LinkPrediction as LinkPrediction
 
 device = 'cpu'
 
@@ -48,14 +48,28 @@ def train(model, optimizer, train_data):
 
     return loss
 
+def test(model, optimizer, test_data):
+    model.eval()
+    z = model.forward(test_data.x, test_data.pos_edge_label_index)
+    link_logits = decode(z, test_data.pos_edge_label_index, test_data.neg_edge_label_index)
+    link_labels = get_link_labels(test_data.pos_edge_label_index, test_data.neg_edge_label_index)
+    loss = nn.functional.binary_cross_entropy_with_logits(link_logits, link_labels)
+    return loss
+
 # Train a model on a dataset, and return the loss
 def train_model(model, optimizer, train_data, test_data, val_data, epochs=100):
-    best_val_perf = test_perf = 0
+    
+    train_loss = []
+    test_loss = []
+    
+    print(f' Epoch | Train loss | Test loss')
+    print(f'-------|------------|-----------')
     for epoch in range(1, epochs+1):
-        train_loss = train(model, optimizer, train_data)
-        print(f'{train_loss:.2f}...', end='')
+        train_loss.append(train(model, optimizer, train_data))
+        test_loss.append(test(model, optimizer, test_data))
+        print(f'----{epoch:04}----|---{train_loss[-1]:.3f}---|---{test_loss[-1]:.3f}---')
     print('')
-    return train_loss
+    return {"epochs":range(1, epochs+1), "train loss":train_loss, "test loss":test_loss}
 
 def CN(PS, test):
     ## Use Common-Neighbours for Precision-Recall 
@@ -77,27 +91,25 @@ def LaBNE(PS, test):
 
 def GraphSAGE(data, train, test, val, epochs, **kargs):
     ## GraphSAGE model and PR on it
-    graphSAGE_model = pyg.nn.GraphSAGE(in_channels=data.num_features, hidden_channels=32, out_channels=2, num_layers=5)
+    graphSAGE_model = pyg.nn.GraphSAGE(in_channels=data.num_features, hidden_channels=32, out_channels=16, num_layers=3)
     optimizer = torch.optim.SGD(graphSAGE_model.parameters(), lr=0.001)
 
     print(f'Training model: {graphSAGE_model} for {epochs} epochs')
     loss = train_model(model=graphSAGE_model, optimizer=optimizer, train_data=train, test_data=test, val_data=val, epochs=epochs)
-    print(f'Train loss: {loss}')
-    R_SAGE, P_SAGE, predictions = LinkPrediction.PrecisionRecallTrainedModel(model=graphSAGE_model, train_data=train, test_data=test)
-    _ = {'recall': R_SAGE, 'precision': P_SAGE, 'label': 'GraphSAGE'}
+    R_SAGE, P_SAGE, predictions = LinkPrediction.precision_recall_trained_model(model=graphSAGE_model, train_data=train, test_data=test)
+    _ = {'recall': R_SAGE, 'precision': P_SAGE, 'label': 'GraphSAGE', 'losses': loss}
     return _
 
 def PNA(data, train, test, val, epochs, **kargs):
     ## PNA model and PR on it
     deg = torch.Tensor(pyg.utils.degree(train.edge_index[0], train.num_nodes))
-    pna_model = pyg.nn.PNA(in_channels=data.num_features, hidden_channels=32, out_channels=2, num_layers=3, aggregators=['mean', 'max', 'sum', 'std'], scalers=['identity', 'linear'], deg=deg)
+    pna_model = pyg.nn.PNA(in_channels=data.num_features, hidden_channels=32, out_channels=16, num_layers=3, aggregators=['mean', 'max', 'sum', 'std'], scalers=['identity', 'linear'], deg=deg)
     optimizer = torch.optim.SGD(pna_model.parameters(), lr=0.001)
 
     print(f'Training model: {pna_model} for {epochs} epochs')
     loss = train_model(model=pna_model, optimizer=optimizer, train_data=train, test_data=test, val_data=val, epochs=epochs)
-    print(f'Train loss: {loss}')
-    R_PNA, P_PNA, predictions = LinkPrediction.PrecisionRecallTrainedModel(model=pna_model, train_data=train, test_data=test)
-    _ = {'recall': R_PNA, 'precision': P_PNA, 'label': 'PNA'}
+    R_PNA, P_PNA, predictions = LinkPrediction.precision_recall_trained_model(model=pna_model, train_data=train, test_data=test)
+    _ = {'recall': R_PNA, 'precision': P_PNA, 'label': 'PNA', 'losses': loss}
     return _
 
 # class Shallownet(nn.Module):

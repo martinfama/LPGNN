@@ -4,9 +4,27 @@ import torch_geometric as pyg
 import torch
 from . import network_generator as ng
 import networkx as nx
+import igraph as ig
 import numpy as np
 
-def getPSNetwork(N, avg_k, gamma, Temp, seed):
+def add_self_loops_to_graph(G):
+    """Add self-loops to a graph
+
+    Args:
+        G (nx.Graph or ig.Graph): Graph to add self-loops to.
+
+    Returns:
+        nx.Graph or ig.Graph: Graph with self-loops added.
+    """
+    if type(G) == nx.Graph:
+        for node in G.nodes():
+            G.add_edge(node, node)
+    elif type(G) == ig.Graph:
+        for node in G.vs:
+            G.add_edge(node.index, node.index)
+    return G
+
+def get_ps_network(N, avg_k, gamma, Temp, seed):
     """Generate a PS network using the network_generator module. For now, we will use
     three copies of the same network in types ``igraph.Graph``, ``networkx.Graph`` and
     ``torch.Tensor``, since the newer stuff works with networkx and torch, but the older
@@ -23,10 +41,12 @@ def getPSNetwork(N, avg_k, gamma, Temp, seed):
         tuple: A tuple containing the three network types: (igraph, networkx, torch).
     """
     PS_nx, PS = ng.generatePSNetwork_nx(N=N, avg_k=avg_k, gamma=gamma, Temp=Temp, seed=seed)
+    PS_nx = add_self_loops_to_graph(PS_nx)
+    PS = add_self_loops_to_graph(PS)
     data = pyg.utils.from_networkx(PS_nx)
     return PS, PS_nx, data
 
-def getBarabasiNetwork(N, M):
+def get_barabasi_network(N, M):
     """Generate a Barabasi-Albert network
 
     Args:
@@ -39,7 +59,7 @@ def getBarabasiNetwork(N, M):
     data = pyg.utils.from_networkx(G_nx)
     return G, G_nx, data
 
-def getErdos_RenyiNetwork(N, p):
+def get_erdos_renyi_network(N, p):
     """Generate a Erdos-Renyi network
 
     Args:
@@ -52,7 +72,7 @@ def getErdos_RenyiNetwork(N, p):
     data = pyg.utils.from_networkx(G_nx)
     return G, G_nx, data
 
-def TrainTestSplit(data, test_ratio, val_ratio, neg_samples=False):
+def train_test_split(data, test_ratio, val_ratio, neg_samples=False):
     """Split a data graph object (``torch.Tensor``) into train, test and validation sets of edges.
 
     Args:

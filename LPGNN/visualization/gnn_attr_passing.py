@@ -91,3 +91,30 @@ def animate_graph_with_attrs(G, attrs_list, savename=None):
     imageio.mimsave(dir_path+'/out.gif', images)
 
     return
+
+def draw_embedding(G, embedding, **kargs):
+    """Draws a graph, coloring the nodes according to the attributes.
+
+    Args:
+        G (networkx.Graph): The corresponding graph.
+        attrs (torch.Tensor): The attributes of the nodes.
+
+    Returns:
+        None
+    """
+
+    fig, ax = plt.subplots(figsize=(12,10))
+
+    # Draw the graph. The node colors are set according to the attributes.
+    nodes = nx.draw(G, pos=embedding, node_color=G.graph['color'], node_size=G.graph['size'])
+    #nodes = nx.draw_networkx_nodes(G, pos=G.graph['pos'], node_color=G.graph['color'])
+    #nodes.set_norm(mcolors.SymLogNorm(linthresh=0.01, linscale=1, base=10))
+    # labels = nx.draw_networkx_labels(G, pos)
+    #edges = nx.draw_networkx_edges(G, embedding, alpha=0.5)
+    
+    #if 'max_attr' in kargs and 'min_attr' in kargs:
+    #    cbar.boundaries(kargs['min_attr'], kargs['max_attr'])
+    plt.axis('off')
+    plt.figaspect(8)
+ 
+    return fig, ax
