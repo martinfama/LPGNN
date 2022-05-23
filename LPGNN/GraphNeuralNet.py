@@ -9,8 +9,16 @@ import pdb
 
 import LPGNN.network_analysis as na
 import LPGNN.LinkPrediction as LinkPrediction
+import LPGNN.metrics as metrics
 
 device = 'cpu'
+
+def loss_by_hyperbolic_distance(x, pos_edge_index):
+    d = torch.zeros((x.size(0), x.size(0)))
+    for (i, j) in pos_edge_index.T:
+        d[i, j] = metrics.hyperbolic_distance(x[i][0], x[i][1], x[j][0], x[j][1])
+        d[j, i] = d[i, j]
+    return d
 
 # Convert the models output to a logit matrix
 def decode(z, pos_edge_index, neg_edge_index):
@@ -33,21 +41,22 @@ def get_link_labels(pos_edge_index, neg_edge_index):
 # One epoch of training
 def train(model, optimizer, train_data):
     model.train()
-    optimizer.zero_grad()
     
     z = model.forward(train_data.x, train_data.pos_edge_label_index) #forward
     link_logits = decode(z, train_data.pos_edge_label_index, train_data.neg_edge_label_index) # decode
     
     link_labels = get_link_labels(train_data.pos_edge_label_index, train_data.neg_edge_label_index)
+    #loss = loss_by_hyperbolic_distance(train_data.x, train_data.pos_edge_label_index)
     loss = nn.functional.binary_cross_entropy_with_logits(link_logits, link_labels)
     #probs = z @ z.T
     #probs = nn.functional.normalize(torch.concat((probs[train_data.pos_edge_label_index[0], train_data.pos_edge_label_index[1]],
                                                   #probs[train_data.neg_edge_label_index[0], train_data.neg_edge_label_index[1]])), dim=0)
     #loss = nn.functional.binary_cross_entropy(probs, link_labels)
+    optimizer.zero_grad()
     loss.backward()
     optimizer.step()
 
-    return loss
+    return loss, z
 
 def test(model, optimizer, test_data):
     model.eval()
@@ -56,7 +65,7 @@ def test(model, optimizer, test_data):
         link_logits = decode(z, test_data.pos_edge_label_index, test_data.neg_edge_label_index)
         link_labels = get_link_labels(test_data.pos_edge_label_index, test_data.neg_edge_label_index)
         loss = nn.functional.binary_cross_entropy_with_logits(link_logits, link_labels)
-    return loss
+    return loss, z
 
 # Train a model on a dataset, and return the loss
 def train_model(model, optimizer, train_data, test_data, val_data, epochs=100):
@@ -64,15 +73,19 @@ def train_model(model, optimizer, train_data, test_data, val_data, epochs=100):
     train_loss = []
     val_loss = []
     
-    print(f' Epoch | Train loss | Val loss')
-    print(f'-------|------------|-----------')
+    z_train = []
+
+    # print(f' Epoch | Train loss | Val loss')
+    # print(f'-------|------------|-----------')
     for epoch in range(1, epochs+1):
-        train_loss.append(train(model, optimizer, train_data))
-        val_loss.append(test(model, optimizer, val_data))
-        print(f'----{epoch:04}----|---{train_loss[-1]:.3f}---|---{val_loss[-1]:.3f}---')
-    print('')
-    test_loss = test(model, optimizer, test_data)
-    return {"epochs":range(1, epochs+1), "train loss":train_loss, "val loss":val_loss, "test loss":test_loss}
+        loss, z = train(model, optimizer, train_data)
+        train_loss.append(loss)
+        z_train.append(z)
+        val_loss.append(test(model, optimizer, val_data)[1])
+        # print(f'----{epoch:04}----|---{train_loss[-1]:.3f}---|---{val_loss[-1]:.3f}---')
+    # print('')
+    test_loss = test(model, optimizer, test_data)[1]
+    return {"epochs":range(1, epochs+1), "train loss":train_loss, "val loss":val_loss, "test loss":test_loss, "z_train":z_train}
 
 def CN(PS, test):
     ## Use Common-Neighbours for Precision-Recall 
@@ -94,14 +107,14 @@ def LaBNE(PS, test):
 
 def GraphSAGE(data, train, test, val, epochs):
     ## GraphSAGE model and PR on it
-    graphSAGE_model = pyg.nn.GraphSAGE(in_channels=data.num_features, hidden_channels=32, out_channels=16, num_layers=3, dropout=0.1, act=torch.nn.Sigmoid(), jk='cat')
+    graphSAGE_model = pyg.nn.GraphSAGE(in_channels=data.num_features, hidden_channels=32, out_channels=16, num_layers=3, dropout=0.1, act=torch.nn.Sigmoid(), jk='cat', bias=False)
     optimizer = torch.optim.SGD(graphSAGE_model.parameters(), lr=0.01)
 
     print(f'Training model: {graphSAGE_model} for {epochs} epochs')
     loss = train_model(model=graphSAGE_model, optimizer=optimizer, train_data=train, test_data=test, val_data=val, epochs=epochs)
     print("Test loss:", loss['test loss'])
     R_SAGE, P_SAGE, predictions = LinkPrediction.precision_recall_trained_model(model=graphSAGE_model, train_data=train, test_data=test)
-    _ = {'recall': R_SAGE, 'precision': P_SAGE, 'label': 'GraphSAGE', 'losses': loss}
+    _ = {'recall': R_SAGE, 'precision': P_SAGE, 'label': 'GraphSAGE', 'losses': loss, 'z_train': loss['z_train']}
     return _
 
 def PNA(data, train, test, val, epochs, **kargs):

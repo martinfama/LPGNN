@@ -37,12 +37,11 @@ def draw_graph_with_attrs(G, attrs, **kargs):
     fig, ax = plt.subplots(figsize=(12,10))
 
     # Draw the graph. The node colors are set according to the attributes.
-    nodes = nx.draw_networkx_nodes(G, pos=G.graph['pos'], cmap=plt.cm.plasma, 
-                                   node_color=np.array(list(node_dict.values()))/(kargs['max_attr']-kargs['min_attr']),
+    nodes = nx.draw_networkx_nodes(G, pos=node_dict, node_color=G.graph['color'],
                                    nodelist=node_dict.keys())
     nodes.set_norm(mcolors.SymLogNorm(linthresh=0.01, linscale=1, base=10))
     # labels = nx.draw_networkx_labels(G, pos)
-    edges = nx.draw_networkx_edges(G, G.graph['pos'], alpha=0.5)
+    edges = nx.draw_networkx_edges(G, node_dict, alpha=0.5)
     
     cax = fig.add_axes([0.85, 0.1, 0.05, 0.8])
     fig.colorbar(nodes, cax=cax, format='%.2f', ticks=[kargs['min_attr'], kargs['max_attr']])
@@ -65,7 +64,7 @@ def animate_graph_with_attrs(G, attrs_list, savename=None):
 
     max_attr, min_attr = max([torch.max(m) for m in attrs_list]).detach().numpy(), min([torch.min(m) for m in attrs_list]).detach().numpy()
 
-    fig, ax, cax, nodes = draw_graph_with_attrs(G, attrs_list[0], max_attr=max_attr, min_attr=min_attr)
+    fig, ax, cax, nodes = draw_graph_with_attrs(G, attrs_list[0].detach().numpy(), max_attr=max_attr, min_attr=min_attr)
 
     dir_path = os.path.join(os.getcwd(), 'figs/animations', savename)
     os.makedirs(dir_path) if not os.path.exists(dir_path) else None
@@ -74,13 +73,14 @@ def animate_graph_with_attrs(G, attrs_list, savename=None):
     images.append(imageio.imread(dir_path+f'/000.png'))
 
     def update_colors(i):
-        node_dict = LPGNN.utils.type_conversions.tensor_to_node_dict(attrs_list[i], G.nodes())
+        node_dict = LPGNN.utils.type_conversions.tensor_to_node_dict(attrs_list[i].detach().numpy(), G.nodes())
         # Update the node colors.
         ax.clear()
-        nx.draw_networkx_nodes(G, pos=G.graph['pos'], cmap=plt.cm.plasma, 
-                                   node_color=np.array(list(node_dict.values()))/(max_attr-min_attr),
+        pos = node_dict
+        nx.draw_networkx_nodes(G, pos=node_dict, 
+                                   node_color=G.graph['color'],
                                    nodelist=node_dict.keys(), ax=ax)
-        edges = nx.draw_networkx_edges(G, G.graph['pos'], alpha=0.5, ax=ax)
+        edges = nx.draw_networkx_edges(G, node_dict, alpha=0.5, ax=ax)
         #nodes.set_norm(mcolors.SymLogNorm(linthresh=0.01, linscale=1, base=10))
         return nodes,
 
