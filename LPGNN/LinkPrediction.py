@@ -66,7 +66,7 @@ def precision_recall_trained_model(model, train_data, test_data):
         tuple: a tuple given by (R, P, predictions) where R is the recall, P is the precision 
                and predictions is the list of predictions.
     """
-    z = model.forward(train_data.x, train_data.pos_edge_label_index) #forward
+    z = model.forward(train_data.x, train_data.pos_edge_label_index).detach().numpy() #forward
     print(f'z.shape = {z.shape}')
     # generate a probability matrix
     prob_adj = z @ z.T
@@ -76,7 +76,8 @@ def precision_recall_trained_model(model, train_data, test_data):
         for j in range(i+1, prob_adj.shape[0]):
             # don't include train data edges in the list
             if not np.any(np.all(np.array([i, j]) == train_data.pos_edge_label_index.T.detach().numpy(), axis=1)):
-                prob_list.append([i,j, float(prob_adj[i,j])])
+                #prob_list.append([i,j, float(prob_adj[i,j])])
+                prob_list.append([i,j, float(np.linalg.norm(z[i] - z[j]))])
     # sort the list by probability
     prob_list = sorted(prob_list, key=lambda x: x[2], reverse=True)
     print("Probability list length: ", prob_list.__len__())

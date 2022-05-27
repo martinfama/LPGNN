@@ -24,6 +24,7 @@ def loss_by_hyperbolic_distance(x, pos_edge_index):
 def decode(z, pos_edge_index, neg_edge_index):
     edge_index = torch.cat([pos_edge_index, neg_edge_index], dim=1)
     logits = (z[edge_index[0]] * z[edge_index[1]]).sum(dim=1)
+    #logits = (z[edge_index[0]] - z[edge_index[1]]).sum(dim=1)
     #logits = (z[pos_edge_index[0]] * z[pos_edge_index[1]]).sum(dim=1)
     return logits
 
@@ -84,8 +85,8 @@ def train_model(model, optimizer, train_data, test_data, val_data, epochs=100):
         val_loss.append(test(model, optimizer, val_data)[1])
         # print(f'----{epoch:04}----|---{train_loss[-1]:.3f}---|---{val_loss[-1]:.3f}---')
     # print('')
-    test_loss = test(model, optimizer, test_data)[1]
-    return {"epochs":range(1, epochs+1), "train loss":train_loss, "val loss":val_loss, "test loss":test_loss, "z_train":z_train}
+    test_loss, z_test = test(model, optimizer, test_data)
+    return {"epochs":range(1, epochs+1), "train loss":train_loss, "val loss":val_loss, "test loss":test_loss, "z_train":z_train, "z_test":z_test}
 
 def CN(PS, test):
     ## Use Common-Neighbours for Precision-Recall 
@@ -107,20 +108,20 @@ def LaBNE(PS, test):
 
 def GraphSAGE(data, train, test, val, epochs):
     ## GraphSAGE model and PR on it
-    graphSAGE_model = pyg.nn.GraphSAGE(in_channels=data.num_features, hidden_channels=32, out_channels=16, num_layers=3, dropout=0.1, act=torch.nn.Sigmoid(), jk='cat', bias=False)
+    graphSAGE_model = pyg.nn.GraphSAGE(in_channels=data.num_features, hidden_channels=32, out_channels=2, num_layers=3, dropout=0.1, act=torch.nn.Sigmoid(), jk='cat', bias=False)
     optimizer = torch.optim.SGD(graphSAGE_model.parameters(), lr=0.01)
 
     print(f'Training model: {graphSAGE_model} for {epochs} epochs')
     loss = train_model(model=graphSAGE_model, optimizer=optimizer, train_data=train, test_data=test, val_data=val, epochs=epochs)
     print("Test loss:", loss['test loss'])
     R_SAGE, P_SAGE, predictions = LinkPrediction.precision_recall_trained_model(model=graphSAGE_model, train_data=train, test_data=test)
-    _ = {'recall': R_SAGE, 'precision': P_SAGE, 'label': 'GraphSAGE', 'losses': loss, 'z_train': loss['z_train']}
+    _ = {'recall': R_SAGE, 'precision': P_SAGE, 'label': 'GraphSAGE', 'losses': loss, 'z_train': loss['z_train'], 'z_test': loss['z_test']}
     return _
 
 def PNA(data, train, test, val, epochs, **kargs):
     ## PNA model and PR on it
     deg = torch.Tensor(pyg.utils.degree(train.edge_index[0], train.num_nodes))
-    pna_model = pyg.nn.PNA(in_channels=data.num_features, hidden_channels=32, out_channels=16, num_layers=3, aggregators=['mean', 'max', 'sum', 'std'], scalers=['identity', 'linear'], deg=deg)
+    pna_model = pyg.nn.PNA(in_channels=data.num_features, hidden_channels=32, out_channels=2, num_layers=3, aggregators=['mean', 'max', 'sum', 'std'], scalers=['identity', 'linear'], deg=deg)
     optimizer = torch.optim.SGD(pna_model.parameters(), lr=0.01)
 
     print(f'Training model: {pna_model} for {epochs} epochs')

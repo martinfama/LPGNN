@@ -83,10 +83,10 @@ def FullRun(**kargs):
             PR_list.append(GraphNeuralNet.CN(G, test))
         if model == 'GraphSAGE':
             PR_list.append(GraphNeuralNet.GraphSAGE(data, train, test, val, options['epochs']))
-            loss_plotting.plot_losses_vs_epochs(PR_list[-1])
+            #loss_plotting.plot_losses_vs_epochs(PR_list[-1])
         if model == 'PNA':
             PR_list.append(GraphNeuralNet.PNA(data, train, test, val, options['epochs']))
-            loss_plotting.plot_losses_vs_epochs(PR_list[-1])
+            #loss_plotting.plot_losses_vs_epochs(PR_list[-1])
     plt.show()
 
     ## Plot the results and save them
