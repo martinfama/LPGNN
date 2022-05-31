@@ -21,7 +21,7 @@ def plot_pr_curves(PR_list, save_name=''):
     fig.savefig('./figs/PR/'+save_name+'.pdf', bbox_inches='tight')
     plt.close()
 
-def precision_recall(test_data, predictions):
+def precision_recall(test_data, val_data, predictions):
     """Generates a Precision-Recall curve, given the predictions 
     and the test data. tp (true positive) cases are added until 
     recall is 1 (tp == test_pos_edge_cases).
@@ -33,6 +33,10 @@ def precision_recall(test_data, predictions):
     Returns:
         tuple: a tuple given by (R, P, predictions) where R is the recall, P is the precision and predictions is the passed list of predictions.
     """
+
+    # Concatenate test and validation edges
+    total_index = np.concatenate((test_data.pos_edge_label_index.T.detach().numpy(), val_data.pos_edge_label_index.T.detach().numpy()), axis=0)
+
     R = [] #recall
     P = [] #precision
     tp = 0 #true positive cases (i.e. correctly predicted positive cases)
@@ -40,18 +44,18 @@ def precision_recall(test_data, predictions):
     for i, p in enumerate(predictions):
         # this checks if the prediction is a true positive by looking for it
         # in the test_data positive edge cases
-        if np.any(np.all(np.array([p[0], p[1]]) == test_data.pos_edge_label_index.T.detach().numpy(), axis=1)):
+        if np.any(np.all(np.array([p[0], p[1]]) == total_index, axis=1)):
             tp += 1
         else:
             fp += 1
         P.append(tp / (tp + fp))
-        R.append(tp / test_data.pos_edge_label.shape[0])
+        R.append(tp / total_index.shape[0])
         # if all positive test cases have been accounted for (i.e. R = 1), break
-        if tp == test_data.pos_edge_label.shape[0]:
+        if tp == total_index.shape[0]:
             break
     return R, P, predictions
 
-def precision_recall_trained_model(model, train_data, test_data):
+def precision_recall_trained_model(model, train_data, val_data, test_data, norm='prob_adj'):
     """Generates a Precision-Recall curve, given the trained model, train data and test data.
     For now, this assumes the model generates a per-node feature vector (``z``), and uses that
     to generate a probability matrix (``prob_adj``) which indicates the probability of an edge 
@@ -67,7 +71,6 @@ def precision_recall_trained_model(model, train_data, test_data):
                and predictions is the list of predictions.
     """
     z = model.forward(train_data.x, train_data.pos_edge_label_index).detach().numpy() #forward
-    print(f'z.shape = {z.shape}')
     # generate a probability matrix
     prob_adj = z @ z.T
     # prob_list will be built by scanning the entries of the probability matrix and sorting
@@ -76,9 +79,10 @@ def precision_recall_trained_model(model, train_data, test_data):
         for j in range(i+1, prob_adj.shape[0]):
             # don't include train data edges in the list
             if not np.any(np.all(np.array([i, j]) == train_data.pos_edge_label_index.T.detach().numpy(), axis=1)):
-                #prob_list.append([i,j, float(prob_adj[i,j])])
-                prob_list.append([i,j, float(np.linalg.norm(z[i] - z[j]))])
+                if norm == 'prob_adj':
+                    prob_list.append([i,j, float(prob_adj[i,j])])
+                elif norm == 'dist':
+                    prob_list.append([i,j, float(np.linalg.norm(z[i] - z[j]))])
     # sort the list by probability
     prob_list = sorted(prob_list, key=lambda x: x[2], reverse=True)
-    print("Probability list length: ", prob_list.__len__())
-    return precision_recall(test_data, prob_list)
+    return precision_recall(test_data, val_data, prob_list)

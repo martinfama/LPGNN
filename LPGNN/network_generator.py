@@ -300,7 +300,7 @@ def generateLaBNE(network=None, graph=None, eigenvector_k=3, scatterPlot=False, 
             raise Exception()
     except:
         for i in range(N):
-            labne_graph.vs[i]['color'] = rainbow_palette.get(int(labne_graph.vs[i]['theta']/(2*np.pi)*N))
+            labne_graph.vs[i]['color'] = rainbow_palette.get(int(labne_graph.vs[i]['theta']/(2*np.pi)*(N-1)))
 
     #give the igraph Graph x and y coordinates, so as to be able to plot it
     #and show the hyperbolic structure

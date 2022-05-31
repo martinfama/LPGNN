@@ -179,6 +179,8 @@ def precision_recall_snapshots(snapshot_t0 = igraph.Graph(), snapshot_t1 = igrap
             precision.append(tp/(tp+fp))
             recall.append(tp/non_train_edgecount)
             matrix.append(np.array([[tn, fp],[fn, tp]]))
+        if tp >= non_train_edgecount:
+            break
 
     # the confusion matrix:
     #   0,0 is TN
