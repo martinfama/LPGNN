@@ -26,7 +26,7 @@ sigmoid = nn.Sigmoid()
 # Convert the models output to a logit matrix
 def decode(z, pos_edge_index, neg_edge_index):
     edge_index = torch.cat([pos_edge_index, neg_edge_index], dim=1)
-    logits = (z[edge_index[0]] * z[edge_index[1]]).sum(dim=1)
+    logits = torch.abs((z[edge_index[0]] * z[edge_index[1]])).sum(dim=1)
     #logits = 1/(z[edge_index[0]] - z[edge_index[1]]).pow(2).sum(dim=1).sqrt()
     #logits = hyperbolic_distance(z[pos_edge_index[0]], z[pos_edge_index[1]])
     #logits = (z[edge_index[0]] - z[edge_index[1]]).sum(dim=1)
