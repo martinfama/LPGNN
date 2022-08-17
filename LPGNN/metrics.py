@@ -1,5 +1,6 @@
 import igraph
 import numpy as np
+import torch as th
 
 #import network_generator as ng
 #import network_analysis as na
@@ -18,6 +19,25 @@ def hyperbolic_distance(r_1, theta_1, r_2, theta_2):
         return 0
     else:
         return d
+
+def hyperbolic_distances(position_list:th.Tensor, position_single:th.Tensor):
+    """Gets the hyperbolic distances between ``position_single`` and list ``position_list``
+
+    Args:
+        position_list (th.Tensor): A (N,2) tensor of floats (which indicate (r, theta))
+        position_single (th.Tensor): A 2 element tensor which indicates specific (r, theta) pos
+
+    Returns:
+        th.Tensor: Tensor of distances, shape (N,1)
+    """
+    
+    #get angular distance between list of positions and index position
+    angular_distance = th.min(2*th.pi-th.abs(position_list[:,1]-position_single[1]), th.abs(position_list[:,1]-position_single[1]))
+    
+    #calculate hyperbolic distance between list of positions and index position
+    d = th.arccosh(th.cosh(position_single[0])*th.cosh(position_list[:,0]) - th.sinh(position_single[0])*th.sinh(position_list[:,0])*th.cos(angular_distance))
+    return d
+
 
 
 # metrics for node pairs. define all in a standard way so that the precision-recall function

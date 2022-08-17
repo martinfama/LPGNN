@@ -1,5 +1,8 @@
 __version__ = '1.2.3'
 
+import torch as th
+import torch_geometric as pyg
+
 import igraph
 import networkx as nx
 import random
@@ -48,11 +51,11 @@ class Network(object):
         # gamma is the scaling factor, assuming a scale free network
         if 'gamma' in kwargs:
             self.gamma = kwargs.get('gamma')
-        # Temp is the network temperature, which is related to it's clustering coefficient \bar{c}
-        if 'Temp' in kwargs:
-            self.Temp = kwargs.get('Temp')
+        # T is the network Terature, which is related to it's clustering coefficient \bar{c}
+        if 'T' in kwargs:
+            self.T = kwargs.get('T')
     
-    def generatePSNetwork(self, N=None, avg_k=None, gamma=None, Temp=None, seed=None):
+    def generatePSNetwork(self, N=None, avg_k=None, gamma=None, T=None, seed=None):
         
         if N != None:
             self.N = N
@@ -60,12 +63,12 @@ class Network(object):
             self.avg_k = avg_k
         if gamma != None:
             self.gamma = gamma
-        if Temp != None:
-            self.Temp = Temp
+        if T != None:
+            self.T = T
         if seed != None:
             self.seed = time.time()
         
-        self.graph = generatePSNetwork(N, avg_k, gamma, Temp, seed)
+        self.graph = generatePSNetwork(N, avg_k, gamma, T, seed)
 
         self.is_PS_generated = True
 
@@ -93,37 +96,40 @@ class Network(object):
         return len(set(self.graph.neighbors(i)).intersection(self.graph.neighbors(j)))/np.sqrt(self.graph.degree(i)*self.graph.degree(j))
 
 #generate a network according to the PS model       #seed is for randomness
-def generatePSNetwork(N=0, avg_k=0, gamma=0, Temp=0, seed=0):
+def generatePSNetwork(N=0, avg_k=0, gamma=0, T=0, seed=0):
 
-    random.seed(seed)
-    
-    #beta controls popularity fading
+    th.manual_seed(seed)
+
+    data = pyg.data.Data(is_directed=False)
+    data.num_nodes = N
+    # Initialize node positions as 2D torch tensor (r, theta). Both are zero
+    data.node_positions = th.zeros(size=(data.num_nodes,2))
+    # Set node angular positions to random uniform distribution [0, 2π). We
+    # can do this now because it doesn't affect PS algorithm.
+    data.node_positions[:,1] = th.rand(size=(data.num_nodes,))*2*th.pi
+    # We _can't_ set node radial positions now because with popularity fading,
+    # this coordinate changes as time progresses in the network generation.
+
+    # beta controls popularity fading
     beta = 1/(gamma-1)
+    # avg number of connections
     m = round(avg_k/2)
-    
-    #create a Graph() object. we add the first node, and set it's attributes (original_index, r and theta)
-    graph = igraph.Graph()
-    graph.add_vertex()
-    #original index
-    graph.vs['o_i'] = [0]
-    #r coordinate
-    graph.vs['r'] = [0]
-    #angular coordinate
-    graph.vs['theta'] = [random.uniform(0, 2*np.pi)]
+    # since the nodes 0,1,2,...,m will be fully connected, we connect them now
+    data.edge_index = th.Tensor([[i, j] for i in th.arange(0, m+1) for j in th.arange(i+1, m+1)]).T.type(th.int64)
+    # duplicate all connections but switched (i.e. (a,b) -> (b,a)), to make undirected graph
+    data.edge_index = pyg.utils.to_undirected(data.edge_index)
 
-    #t acts as our discrete time variable, where an increase of 1 indicates a new node entering the network
-    #special attention must be paid to whether t is used as an _index_ for lists, in which case it is used
-    #as is, or when it is used related to the network itself, where t+1 must be used, since we start the count
-    #at 1
-    for t in range(1, N):
+    for t in range(m+1, N):
+
+        # radial position of node entering network
         r_t = np.log(t+1)
 
-        #update all of the existing nodes radial coordinates according to
-        # r_s(t) = beta*r_s + (1-beta)*r_t
-        #which simulates popularity decay due to aging
-        for s in range(t):
-            r_s = np.log(s+1)
-            graph.vs[s]['r'] = 2*(1-beta)*np.log(t+1) + 2*beta*r_s
+        # update all of the existing nodes radial coordinates according to
+        # r_s(t) = beta*r_s + (1-beta)*r_t, w/ r_s = ln(s), r_t = ln(t)
+        # which simulates popularity decay due to aging
+        r_s = th.log(th.arange(1, t+1))
+        data.node_positions[:t,0] = 2*(1-beta)*r_t + 2*beta*r_s
+        data.node_positions[t,0]  = 2*r_t
 
         #R_t is the radius of the circle containing the network in Euclidean space,
         #which in turn contains the entirety of the Hyperbolic space
@@ -131,84 +137,34 @@ def generatePSNetwork(N=0, avg_k=0, gamma=0, Temp=0, seed=0):
         # If beta == 1, popularity fading is not simulated
         if beta == 1:
             R_t = 2*r_t
-        elif beta < 1 and Temp == 0:
+        elif beta < 1 and T == 0:
             R_t = 2*r_t - 2*np.log((2*(1 - np.exp(-0.5*(1 - beta)*2*r_t)))/(np.pi*m*(1 - beta))) #SI, Eq. 10
         else:
             #R_t = 2*r_t - 2*np.log((2*(1 - np.exp(-0.5*(1 - beta)*2*r_t)))/(np.pi*m*(1 - beta))) #SI, Eq. 10
-            R_t = 2*r_t - 2*np.log((2*Temp*(1 - np.exp(-0.5*(1 - beta)*2*r_t)))/(np.sin(Temp*np.pi)*m*(1 - beta))) #SI, Eq. 26
-            
-        #add new node and set attributes
-        graph.add_vertex()
-        graph.vs[-1]['o_i'] = t
-        graph.vs[-1]['r'] = 2*np.log(t+1)
-        graph.vs[-1]['theta'] = random.uniform(0, 2*np.pi)
+            R_t = 2*r_t - 2*np.log((2*T*(1 - np.exp(-0.5*(1 - beta)*2*r_t)))/(np.sin(T*np.pi)*m*(1 - beta))) #SI, Eq. 26
         
-        #if t <= m, we simply connect to all existing nodes in the network
-        if t <= m:
-                for s in range(t):
-                    graph.add_edge(t, s)
+        #save all hyperbolic distances between new node and other nodes
+        d = hyperbolic_distances(data.node_positions[:t-1], data.node_positions[t]).sort()
+
+        #If T = 0, simply connect to the m hyperbolically closest nodes
+        if T == 0:
+            new_edges = th.stack([d.indices[:m], th.empty(m).fill_(m+1)])
+            data.edge_index = th.cat((data.edge_index, new_edges), dim=1)
+            data.edge_index = pyg.utils.to_undirected(data.edge_index)
+        
         else:
-            #save all hyperbolic distances between new node and other nodes 
-            s_unconnected = [s for s in range(t) if (not graph.are_connected(t, s))]
-            hyperbolic_distances = np.array([[s, hyperbolic_distance(graph.vs[t]['r'], graph.vs[t]['theta'], graph.vs[s]['r'], graph.vs[s]['theta'])] for s in s_unconnected])
+            # probability that the new node connects to the other nodes in the network
+            # also, sort this list, which returns both the sorted list and the sorted indices
+            #     values: p.values
+            #    indices: p.indices
+            p = 1 / (1 + th.exp((d.values - R_t)/(2*T)))
+            # get m nodes to connect to, sampled by the probabilities given by p.values
+            selected_nodes = np.random.choice(d.indices.detach().numpy(), size=m, p=(p/th.sum(p)).detach().numpy(), replace=False)
+            new_edges = th.stack([selected_nodes, th.empty(m).fill_(m+1)])
+            data.edge_index = th.cat((data.edge_index, new_edges), dim=1)
+            data.edge_index = pyg.utils.to_undirected(data.edge_index)
 
-            if Temp > 0:
-                #probability that the new node connects to the other nodes in the network
-                d = np.transpose(hyperbolic_distances)[1]
-                p = 1 / (1 + np.exp((d - R_t)/(2*Temp)))
-                #get the subset of nodes that are not connected to t
-
-                m_count = 0
-                while m_count < m:
-                    #print(f'\r{m_count}', end='')
-                    #this is to check if the probability is relatively high of having connections
-                    #if it is not, we simply connect to the m closest nodes
-                    if ( sum(p[s] < 0.1 for s in range(len(s_unconnected))) == len(s_unconnected) ):
-                        #order hyperbolic distances
-                        hyperbolic_distances = sorted(hyperbolic_distances, key=lambda d: d[1])
-                        #connect to m closest nodes
-                        while m_count < m:
-                            graph.add_edge(t, int(hyperbolic_distances[m_count][0]))
-                            m_count += 1
-                    #otherwise, we connect to m nodes randomly, with their respective probabilities
-                    else:
-                        #sample nodes randomly, and connect to them with probability p, until m nodes are reached. keep a list of unconnected nodes
-                        s_try = np.random.choice(s_unconnected, size=m, p=p/sum(p))
-                        #if random.uniform(0,1) <= p[s_try]:
-                        for s in s_try:
-                            if not graph.are_connected(t, s):
-                                graph.add_edge(t, s)
-                                index = np.where(s_unconnected == s)
-                                s_unconnected = np.delete(s_unconnected, index)
-                                hyperbolic_distances = np.delete(hyperbolic_distances, (np.where(np.transpose(hyperbolic_distances)[:,0]==s)), axis=0)
-                                p = np.delete(p, index)
-                                #hyperbolic_distances = hyperbolic_distances[:,0] != s_try
-                                m_count += 1
-            
-            #If Temp = 0, simply connect to the m hyperbolically closest nodes
-            else:
-                #order hyperbolic distances
-                hyperbolic_distances = sorted(hyperbolic_distances, key=lambda d: d[1])
-                #the first element of each row of hyperbolic_distances is the node index and we ordered hyperbolic_distances, so the first m entries are the m closest nodes
-                for i in range(m):
-                    if (graph.are_connected(t, int(hyperbolic_distances[i][0]))):
-                        print(f"Temp 0, {t}, {hyperbolic_distances[i][0]}")
-                    graph.add_edge(t, int(hyperbolic_distances[i][0]))
-
-    #give the igraph Graph x and y coordinates, so as to be able to plot it
-    #and show the hyperbolic structure
-    graph.vs['x'] = graph.vs['r']*np.cos(graph.vs['theta'])
-    graph.vs['y'] = graph.vs['r']*np.sin(graph.vs['theta'])
-    graph.vs['degree'] = graph.degree()
-    #set the 'size' attribute of each node. nodes with a higher degree are bigger
-    graph.vs['size'] = node_size_by_degree(graph=graph)
-
-    #assign a rainbow palette based on the angular coordinate
-    rainbow_palette = igraph.RainbowPalette(n=N)
-    for i in range(N):
-        graph.vs[i]['color'] = rainbow_palette.get(int(graph.vs[i]['theta']/(2*np.pi)*N))
-    
-    return graph
+    return data
 
 #generates the Laplacian Based Network Embedding for a given Network
 def generateLaBNE(network=None, graph=None, eigenvector_k=3, scatterPlot=False, plotEdges=False):
@@ -239,7 +195,7 @@ def generateLaBNE(network=None, graph=None, eigenvector_k=3, scatterPlot=False, 
         gamma = network.infer_gamma()
 
 
-    #Temp = network.Temp
+    #T = network.T
     beta = 1/(gamma-1)
     m = round(avg_k/2)
 
@@ -351,8 +307,8 @@ def generateLaBNE(network=None, graph=None, eigenvector_k=3, scatterPlot=False, 
 def node_size_by_degree(graph=None, m=1):
     return m*2*np.log(np.array(graph.degree())+np.full(graph.vcount(), 2))*np.log(np.e+100/graph.vcount())
 
-def generatePSNetwork_nx(N=0, avg_k=0, gamma=0, Temp=0, seed=0):
-    PS = generatePSNetwork(N=N, avg_k=avg_k, gamma=gamma, Temp=Temp, seed=seed)
+def generatePSNetwork_nx(N=0, avg_k=0, gamma=0, T=0, seed=0):
+    PS = generatePSNetwork(N=N, avg_k=avg_k, gamma=gamma, T=T, seed=seed)
     PS_nx = nx.Graph(PS.get_edgelist(), pos=np.transpose([PS.vs['x'], PS.vs['y']]), color=PS.vs['color'], size=PS.vs['size'])
     return PS_nx, PS
 

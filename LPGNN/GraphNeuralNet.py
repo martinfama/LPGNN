@@ -15,22 +15,44 @@ device = 'cpu'
 
 sigmoid = nn.Sigmoid()
 
-# def hyperbolic_distance(u, v):
-#     sqdist = torch.sum((u - v) ** 2, dim=-1)
-#     squnorm = torch.sum(u ** 2, dim=-1)
-#     sqvnorm = torch.sum(v ** 2, dim=-1)
-#     x = 1 + 2 * sqdist / ((1 - squnorm) * (1 - sqvnorm)) + 0.001
-#     z = torch.sqrt(x ** 2 - 1)
-#     return torch.log(x + z)
+def hyperbolic_distance(u, v):
+    sqdist = torch.sum((u - v) ** 2, dim=-1)
+    squnorm = torch.sum(u ** 2, dim=-1)
+    sqvnorm = torch.sum(v ** 2, dim=-1)
+    x = 1 + 2 * sqdist / ((1 - squnorm) * (1 - sqvnorm)) + 0.001
+    z = torch.sqrt(x ** 2 - 1)
+    return torch.log(x + z)
+
+def hyperbolic_logits(z, pos_edge_index, neg_edge_index):
+    d = hyperbolic_distance(u=z[pos_edge_index[0]], v=z[pos_edge_index[1]])
+    d = torch.cat((d, hyperbolic_distance(u=z[neg_edge_index[0]], v=z[neg_edge_index[1]])))
+    logits = 1/d
+    #d, indices = torch.sort(d, descending=False)
+    #logits = torch.ones(d.size(0), dtype=torch.float, device=device, requires_grad=True)*10
+    #logits[indices[neg_edge_index.size(1):]] *= (-1)
+    return logits
+
+def poincare_loss(z, pos_edge_index, neg_edge_index):
+    L = torch.Tensor([0])
+    for i in range(pos_edge_index.size(1)):
+        d_h_pos = hyperbolic_distance(z[pos_edge_index[0][i]], z[pos_edge_index[1][i]])
+        neg_edges = [t for t in neg_edge_index.T if t[0] == pos_edge_index[0][i]]
+        denominator = torch.Tensor([0])
+        for neg_edge in neg_edges:
+            d_h_neg = hyperbolic_distance(z[pos_edge_index[0][i]], z[neg_edge[1]])
+            denominator += torch.exp(-d_h_neg)
+        if not torch.is_nonzero(denominator):
+            denominator = torch.Tensor([1])
+        L += torch.log(torch.exp(-d_h_pos)/denominator)
+    return L
 
 # Convert the models output to a logit matrix
 def decode(z, pos_edge_index, neg_edge_index):
-    edge_index = torch.cat([pos_edge_index, neg_edge_index], dim=1)
-    logits = torch.abs((z[edge_index[0]] * z[edge_index[1]])).sum(dim=1)
-    #logits = 1/(z[edge_index[0]] - z[edge_index[1]]).pow(2).sum(dim=1).sqrt()
-    #logits = hyperbolic_distance(z[pos_edge_index[0]], z[pos_edge_index[1]])
-    #logits = (z[edge_index[0]] - z[edge_index[1]]).sum(dim=1)
-    #logits = (z[pos_edge_index[0]] * z[pos_edge_index[1]]).sum(dim=1)
+    edge_index = torch.cat([pos_edge_index, neg_edge_index], dim=-1)
+    #logits = torch.abs((z[edge_index[0]] * z[edge_index[1]])).sum(dim=1)
+    #logits = (z[edge_index[0]] * z[edge_index[1]]).sum(dim=-1)
+    #logits = (z[edge_index[0]] - z[edge_index[1]] + 0.01).norm(dim=-1)
+    logits = hyperbolic_logits(z, pos_edge_index, neg_edge_index)
     return logits
 
 def get_link_labels(pos_edge_index, neg_edge_index):
@@ -49,15 +71,17 @@ def train(model, optimizer, train_data):
     model.train()
     
     z = model.forward(train_data.x, train_data.pos_edge_label_index) #forward
+    for i in range(z.size(0)):
+        print(torch.norm(z[i]))
+        if torch.norm(z[i]) > 1:
+            z[i] = z[i]/torch.norm(z[i])
     link_logits = decode(z, train_data.pos_edge_label_index, train_data.neg_edge_label_index) # decode
     
     link_labels = get_link_labels(train_data.pos_edge_label_index, train_data.neg_edge_label_index)
-    #loss = loss_by_hyperbolic_distance(train_data.x, train_data.pos_edge_label_index)
-    loss = nn.functional.binary_cross_entropy_with_logits(link_logits, link_labels)
-    #probs = z @ z.T
-    #probs = nn.functional.normalize(torch.concat((probs[train_data.pos_edge_label_index[0], train_data.pos_edge_label_index[1]],
-                                                  #probs[train_data.neg_edge_label_index[0], train_data.neg_edge_label_index[1]])), dim=0)
-    #loss = nn.functional.binary_cross_entropy(probs, link_labels)
+    #logits = hyperbolic_logits(z, train_data.pos_edge_label_index, train_data.neg_edge_label_index)
+    #loss = nn.functional.binary_cross_entropy_with_logits(link_logits, link_labels)
+    loss = poincare_loss(z, train_data.pos_edge_label_index, train_data.neg_edge_label_index)
+    print(loss)
     optimizer.zero_grad()
     loss.backward()
     optimizer.step()
