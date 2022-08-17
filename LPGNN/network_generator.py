@@ -145,10 +145,10 @@ def generatePSNetwork(N=0, avg_k=0, gamma=0, T=0, seed=0):
         
         #save all hyperbolic distances between new node and other nodes
         d = hyperbolic_distances(data.node_positions[:t-1], data.node_positions[t]).sort()
-
+        
         #If T = 0, simply connect to the m hyperbolically closest nodes
         if T == 0:
-            new_edges = th.stack([d.indices[:m], th.empty(m).fill_(m+1)])
+            new_edges = th.stack([d.indices[:m], th.empty(m).fill_(t)])
             data.edge_index = th.cat((data.edge_index, new_edges), dim=1)
             data.edge_index = pyg.utils.to_undirected(data.edge_index)
         
@@ -160,9 +160,23 @@ def generatePSNetwork(N=0, avg_k=0, gamma=0, T=0, seed=0):
             p = 1 / (1 + th.exp((d.values - R_t)/(2*T)))
             # get m nodes to connect to, sampled by the probabilities given by p.values
             selected_nodes = np.random.choice(d.indices.detach().numpy(), size=m, p=(p/th.sum(p)).detach().numpy(), replace=False)
-            new_edges = th.stack([selected_nodes, th.empty(m).fill_(m+1)])
+            new_edges = th.stack([selected_nodes, th.empty(m).fill_(t)])
             data.edge_index = th.cat((data.edge_index, new_edges), dim=1)
             data.edge_index = pyg.utils.to_undirected(data.edge_index)
+    
+    data.edge_index = data.edge_index.type(th.int64)
+    # #give the igraph Graph x and y coordinates, so as to be able to plot it
+    # #and show the hyperbolic structure
+    # graph.vs['x'] = graph.vs['r']*np.cos(graph.vs['theta'])
+    # graph.vs['y'] = graph.vs['r']*np.sin(graph.vs['theta'])
+    # graph.vs['degree'] = graph.degree()
+    # #set the 'size' attribute of each node. nodes with a higher degree are bigger
+    # graph.vs['size'] = node_size_by_degree(graph=graph)
+
+    # #assign a rainbow palette based on the angular coordinate
+    # rainbow_palette = igraph.RainbowPalette(n=N)
+    # for i in range(N):
+    #     graph.vs[i]['color'] = rainbow_palette.get(int(graph.vs[i]['theta']/(2*np.pi)*N))
 
     return data
 
