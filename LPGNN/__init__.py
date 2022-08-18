@@ -6,4 +6,4 @@ import LPGNN.Logger
 import LPGNN.network_analysis
 import LPGNN.GraphNeuralNet
 import LPGNN.LinkPrediction
-import LPGNN.network_generator
+import LPGNN.popularity_similarity

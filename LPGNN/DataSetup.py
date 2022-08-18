@@ -2,7 +2,7 @@ import torch_geometric.transforms as pyg_T
 import torch_geometric.data as pyg_data
 import torch_geometric as pyg
 import torch
-from . import network_generator as ng
+from . import popularity_similarity as pop_sim
 import networkx as nx
 import igraph as ig
 import numpy as np

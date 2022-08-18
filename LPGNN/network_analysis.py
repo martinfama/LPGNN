@@ -6,7 +6,7 @@ import matplotlib as mpl
 import scipy
 import scipy.optimize
 import collections
-from . import network_generator as ng
+from . import popularity_similarity as pop_sim
 
 import copy
 
@@ -133,7 +133,7 @@ def precision_recall_snapshots(snapshot_t0 = igraph.Graph(), snapshot_t1 = igrap
     elif metric == 'LaBNE':
         metric_function = LaBNE_metric
         sort_dir = 'ascending'
-        train_graph = ng.generateLaBNE(graph=train_graph, eigenvector_k=3)
+        train_graph = pop_sim.generateLaBNE(graph=train_graph, eigenvector_k=3)
     else:
         raise ValueError('Metric not recognized. Valid metrics are: CN, DS, AA, PA, JC, LaBNE')
 
@@ -205,95 +205,95 @@ def precision_recall_snapshots(snapshot_t0 = igraph.Graph(), snapshot_t1 = igrap
 
     return return_dict
 
-def precision_recall_snapshot_files(snapshot_t0 = ng.Network, snapshot_t1 = ng.Network, header='', metric=None, debug_print_flag=False):
+# def precision_recall_snapshot_files(snapshot_t0 = ng.Network, snapshot_t1 = ng.Network, header='', metric=None, debug_print_flag=False):
 
-    debug_print.debug_print_flag = debug_print_flag
+#     debug_print.debug_print_flag = debug_print_flag
 
-    N = snapshot_t0.graph.vcount()
-    E_t0 = snapshot_t0.graph.get_edgelist()
-    E_t1 = snapshot_t1.graph.get_edgelist()
+#     N = snapshot_t0.graph.vcount()
+#     E_t0 = snapshot_t0.graph.get_edgelist()
+#     E_t1 = snapshot_t1.graph.get_edgelist()
     
-    train_graph = snapshot_t0.graph
-    metric_function = None
-    sort_dir = 'descending'
-    if metric == 'CN':
-        metric_function = common_neighbors
-    elif metric == 'DS':
-        metric_function = dice_similarity
-    elif metric == 'AA':
-        metric_function = adamic_adar_index
-    elif metric == 'PA':
-        metric_function = preferential_attachment
-    elif metric == 'JC':
-        metric_function = jaccard_coefficient
-    elif metric == 'LaBNE' or metric == 'LaBNE_M':
-        metric_function = LaBNE_metric
-        train_graph = ng.generateLaBNE(network=snapshot_t0)
-        sort_dir = 'ascending'
-    else:
-        raise ValueError('Metric not recognized. Valid metrics are: CN, DS, AA, PA, JC, LaBNE')
+#     train_graph = snapshot_t0.graph
+#     metric_function = None
+#     sort_dir = 'descending'
+#     if metric == 'CN':
+#         metric_function = common_neighbors
+#     elif metric == 'DS':
+#         metric_function = dice_similarity
+#     elif metric == 'AA':
+#         metric_function = adamic_adar_index
+#     elif metric == 'PA':
+#         metric_function = preferential_attachment
+#     elif metric == 'JC':
+#         metric_function = jaccard_coefficient
+#     elif metric == 'LaBNE' or metric == 'LaBNE_M':
+#         metric_function = LaBNE_metric
+#         train_graph = ng.generateLaBNE(network=snapshot_t0)
+#         sort_dir = 'ascending'
+#     else:
+#         raise ValueError('Metric not recognized. Valid metrics are: CN, DS, AA, PA, JC, LaBNE')
 
-    debug_print.DebugPrint(f'Using metric: {metric}\n')
-    #debug_print.DebugPrint(f'    Train graph is connected before pruning: {train_graph.is_connected()} | ')
-    #get the largest cluster of the train graph, discarding any other clusters or loose nodes
-    #train_graph = train_graph.clusters().giant()
-    #debug_print.DebugPrint(f'After pruning: {train_graph.is_connected()}\n')
-    #debug_print.DebugPrint(f'    Original graph edgecount: {edgecount}, Train set edgecount: {len(E_train)}, Test set edgecount: {len(E_test)}\n')
-    #array to save link scores, along with the corresponding edge and true/false label (which corresponds to whether
-    # the edge is in the original graph or not)
-    link_scores = []
-    debug_print.DebugPrint('    Calculating link scores... ')
-    with open(f'./obj/{header}_PR_{metric}.csv', 'wb') as file:
-        for i in range(0, N):
-            for j in range(i+1, N):
-                if not snapshot_t0.graph.are_connected(i, j):
-                    #save a three element tuple, which contains the tuple (i, j), the boolean label (0 or 1) and the link score
-                    #the boolean label is 0 if the edge is in the original graph, and 1 if it is not
-                    #the link score is the link score between the two nodes, _given_ by the train graph which has the test edges removed
-                    #link_scores.append([(i, j), PGP_t1_Network.graph.are_connected(i, j), metric_function(PGP_t0_Network.graph, i, j)])
-                    #file.write(f'{i:05},{j:05} {1*snapshot_t1.graph.are_connected(i, j)} {metric_function(train_graph, i, j)}\n'.encode())
-                    file.write(f'{i:05},{j:05} {1*snapshot_t1.graph.are_connected(i, j)} {metric_function(train_graph, i, j)}\n'.encode())
-    file.close()
+#     debug_print.DebugPrint(f'Using metric: {metric}\n')
+#     #debug_print.DebugPrint(f'    Train graph is connected before pruning: {train_graph.is_connected()} | ')
+#     #get the largest cluster of the train graph, discarding any other clusters or loose nodes
+#     #train_graph = train_graph.clusters().giant()
+#     #debug_print.DebugPrint(f'After pruning: {train_graph.is_connected()}\n')
+#     #debug_print.DebugPrint(f'    Original graph edgecount: {edgecount}, Train set edgecount: {len(E_train)}, Test set edgecount: {len(E_test)}\n')
+#     #array to save link scores, along with the corresponding edge and true/false label (which corresponds to whether
+#     # the edge is in the original graph or not)
+#     link_scores = []
+#     debug_print.DebugPrint('    Calculating link scores... ')
+#     with open(f'./obj/{header}_PR_{metric}.csv', 'wb') as file:
+#         for i in range(0, N):
+#             for j in range(i+1, N):
+#                 if not snapshot_t0.graph.are_connected(i, j):
+#                     #save a three element tuple, which contains the tuple (i, j), the boolean label (0 or 1) and the link score
+#                     #the boolean label is 0 if the edge is in the original graph, and 1 if it is not
+#                     #the link score is the link score between the two nodes, _given_ by the train graph which has the test edges removed
+#                     #link_scores.append([(i, j), PGP_t1_Network.graph.are_connected(i, j), metric_function(PGP_t0_Network.graph, i, j)])
+#                     #file.write(f'{i:05},{j:05} {1*snapshot_t1.graph.are_connected(i, j)} {metric_function(train_graph, i, j)}\n'.encode())
+#                     file.write(f'{i:05},{j:05} {1*snapshot_t1.graph.are_connected(i, j)} {metric_function(train_graph, i, j)}\n'.encode())
+#     file.close()
     
-    debug_print.DebugPrint('Done. Sorting file... ')
-    #os.system(f"LC_ALL=C sort -t' ' -gk1 ./obj/{header}_PR_{metric}.csv > ./obj/{header}_PR_{metric}_sorted.csv")
-    if sort_dir == 'descending':
-        os.system(f"LC_ALL=C sort -t' ' -grk3 -s ./obj/{header}_PR_{metric}.csv > ./obj/{header}_PR_{metric}_sorted_final.csv")
-        #os.system(f"LC_ALL=C sort -t' ' -grk3 ./obj/{header}_PR_{metric}.csv > ./obj/{header}_PR_{metric}_sorted_.csv")
-    elif sort_dir == 'ascending':
-        os.system(f"LC_ALL=C sort -t' ' -gk3 -s ./obj/{header}_PR_{metric}.csv > ./obj/{header}_PR_{metric}_sorted_final.csv")
-        #os.system(f"LC_ALL=C sort -t' ' -gk3 ./obj/{header}_PR_{metric}.csv > ./obj/{header}_PR_{metric}_sorted_.csv")
-    debug_print.DebugPrint('Done.\n')
+#     debug_print.DebugPrint('Done. Sorting file... ')
+#     #os.system(f"LC_ALL=C sort -t' ' -gk1 ./obj/{header}_PR_{metric}.csv > ./obj/{header}_PR_{metric}_sorted.csv")
+#     if sort_dir == 'descending':
+#         os.system(f"LC_ALL=C sort -t' ' -grk3 -s ./obj/{header}_PR_{metric}.csv > ./obj/{header}_PR_{metric}_sorted_final.csv")
+#         #os.system(f"LC_ALL=C sort -t' ' -grk3 ./obj/{header}_PR_{metric}.csv > ./obj/{header}_PR_{metric}_sorted_.csv")
+#     elif sort_dir == 'ascending':
+#         os.system(f"LC_ALL=C sort -t' ' -gk3 -s ./obj/{header}_PR_{metric}.csv > ./obj/{header}_PR_{metric}_sorted_final.csv")
+#         #os.system(f"LC_ALL=C sort -t' ' -gk3 ./obj/{header}_PR_{metric}.csv > ./obj/{header}_PR_{metric}_sorted_.csv")
+#     debug_print.DebugPrint('Done.\n')
     
-    """
-    PR_LP_sorted = open(f'./obj/{header}_PR_{metric}_sorted.csv')
-    tp = 0
-    fp = 0
-    fn = snapshot_t1.graph.ecount() - snapshot_t0.graph.ecount()
-    tn = N*(N-1)/2 - snapshot_t1.graph.ecount()
-    precision = []
-    recall = []
-    C_matrix = []
-    non_train_edges = fn
-    for i in range(0, int(N*(N-1)/2-snapshot_t0.graph.ecount())):
-        line = PR_LP_sorted.readline()
-        line = line.split(' ')
-        line = [line[0] == '1']
+#     """
+#     PR_LP_sorted = open(f'./obj/{header}_PR_{metric}_sorted.csv')
+#     tp = 0
+#     fp = 0
+#     fn = snapshot_t1.graph.ecount() - snapshot_t0.graph.ecount()
+#     tn = N*(N-1)/2 - snapshot_t1.graph.ecount()
+#     precision = []
+#     recall = []
+#     C_matrix = []
+#     non_train_edges = fn
+#     for i in range(0, int(N*(N-1)/2-snapshot_t0.graph.ecount())):
+#         line = PR_LP_sorted.readline()
+#         line = line.split(' ')
+#         line = [line[0] == '1']
     
-        if line[0]:
-            tp += 1
-            fn -= 1
-        else:
-            fp += 1
-            tn -= 1
-        if i % step == 0:
-            precision.append(tp/(tp+fp))
-            recall.append(tp/non_train_edges)
-            C_matrix.append([[tn, fp], [fn, tp]])
+#         if line[0]:
+#             tp += 1
+#             fn -= 1
+#         else:
+#             fp += 1
+#             tn -= 1
+#         if i % step == 0:
+#             precision.append(tp/(tp+fp))
+#             recall.append(tp/non_train_edges)
+#             C_matrix.append([[tn, fp], [fn, tp]])
 
-    return precision, recall, C_matrix
-    """
-    return
+#     return precision, recall, C_matrix
+#     """
+#     return
 
 def precision_recall_train_set(graph=igraph.Graph(), metric=None, test_size=0.33, plot=False, random_state=47, step=1, debug_print_flag=False):
     
