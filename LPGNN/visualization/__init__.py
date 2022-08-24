@@ -1,2 +1,4 @@
 import LPGNN.visualization.gnn_attr_passing
 import LPGNN.visualization.loss_plotting
+
+from .degree_distribution import plot_degree_distribution

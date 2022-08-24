@@ -1,17 +1,11 @@
+import numpy as np
+import matplotlib as mpl
+import matplotlib.pyplot as plt
+
 import torch as th
 import torch_geometric as pyg
-
-import igraph
 import networkx as nx
-import random
-import numpy as np
-import matplotlib.pyplot as plt
-import matplotlib
-import scipy
-import scipy.optimize
-import pandas as pd
-import copy
-import time
+
 from .metrics import *
 
 # #infer some of the network's properties, such as the average node degree
@@ -95,12 +89,12 @@ def generatePSNetwork(N:int, avg_k:int, gamma:int, T:int, seed=0):
         #which in turn contains the entirety of the Hyperbolic space
         R_t = 0
         # If beta == 1, popularity fading is not simulated
-        if beta == 1:
-            R_t = 2*r_t
+        if beta == 1: R_t = 2*r_t
         elif beta < 1 and T == 0: R_t = 2*r_t - 2*np.log((2*(1 - np.exp(-0.5*(1 - beta)*2*r_t)))/(np.pi*m*(1 - beta))) #[1], Eq. 10
         else: R_t = 2*r_t - 2*np.log((2*T*(1 - np.exp(-0.5*(1 - beta)*2*r_t)))/(np.sin(T*np.pi)*m*(1 - beta)))         #[1], Eq. 26
         
-        #save all hyperbolic distances between new node and other nodes
+        #save all hyperbolic distances between new node and other nodes, and sort from shortes to longest
+        #this sort method returns a tensor with two sub-tensors: d.values and d.indices (with indices sorted by values)
         d = hyperbolic_distances(data.node_positions[:t-1], data.node_positions[t]).sort()
         
         #If T = 0, simply connect to the m hyperbolically closest nodes
@@ -111,9 +105,6 @@ def generatePSNetwork(N:int, avg_k:int, gamma:int, T:int, seed=0):
         
         else:
             # probability that the new node connects to the other nodes in the network
-            # also, sort this list, which returns both the sorted list and the sorted indices
-            #     values: p.values
-            #    indices: p.indices
             p = 1 / (1 + th.exp((d.values - R_t)/(2*T)))
             # get m nodes to connect to, sampled by the probabilities given by p.values
             selected_nodes = np.random.choice(d.indices.detach().numpy(), size=m, p=(p/th.sum(p)).detach().numpy(), replace=False)
@@ -124,7 +115,6 @@ def generatePSNetwork(N:int, avg_k:int, gamma:int, T:int, seed=0):
     data.edge_index = data.edge_index.type(th.int64)
 
     return data
-
 
 def drawPSNetwork(PS:pyg.data.Data):
     fig, ax = plt.subplots(figsize=(10,10), subplot_kw={'projection': 'polar'})
