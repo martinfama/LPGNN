@@ -38,7 +38,15 @@ def hyperbolic_distances(position_list:th.Tensor, position_single:th.Tensor):
     d = th.arccosh(th.cosh(position_single[0])*th.cosh(position_list[:,0]) - th.sinh(position_single[0])*th.sinh(position_list[:,0])*th.cos(angular_distance))
     return d
 
-
+def hyperbolic_distance_matrix(positions:th.Tensor):
+    N = positions.shape[0]
+    d = th.Tensor([])
+    for i in range(N):
+        #distances = th.stack((th.full((N-i-1,), i), th.arange(i+1, N), hyperbolic_distances(positions[i+1:], positions[i])))
+        distances = hyperbolic_distances(positions[i+1:], positions[i])
+        # d = th.cat((d, distances), dim=1)
+        d = th.cat((d, distances), dim=0)
+    return d
 
 # metrics for node pairs. define all in a standard way so that the precision-recall function
 # has a consistent interface, and you can select the metrics you want to use by name
