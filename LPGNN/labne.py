@@ -17,6 +17,18 @@ from .utils import infer_gamma
 
 #generates the Laplacian Based Network Embedding for a given Network
 def generateLaBNE(data:pyg.data.Data, eigenvector_k=3):
+    """ Given a graph, returns the LaBNE embedding as described in [1].
+
+        [1] Alanis-Lobato, G., Mier, P. & Andrade-Navarro, M. Efficient embedding of complex networks to hyperbolic space via their Laplacian. Sci Rep 6, 30108 (2016). https://doi.org/10.1038/srep30108
+
+    Args:
+        data (pyg.data.Data): The graph to embed.
+        eigenvector_k (int, optional): The dimensionality requested of the embedding. Defaults to 3, which is in fact the 2-dimensional case
+                                       since the first eigenvector has a null eigenvalue associated.
+
+    Returns:
+        _type_: _description_
+    """    
 
     N = data.num_nodes
     degrees = pyg.utils.degree(data.edge_index[0])
