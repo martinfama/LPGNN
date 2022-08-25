@@ -116,7 +116,7 @@ def generatePSNetwork(N:int, avg_k:int, gamma:int, T:int, seed=0):
 
     return data
 
-def drawPSNetwork(PS:pyg.data.Data):
+def drawPSNetwork(PS:pyg.data.Data, **kwargs):
     fig, ax = plt.subplots(figsize=(10,10), subplot_kw={'projection': 'polar'})
     PS_nx = pyg.utils.to_networkx(PS, to_undirected=True)
     
@@ -125,9 +125,13 @@ def drawPSNetwork(PS:pyg.data.Data):
     min_d = np.min(degrees)
 
     #node_size = 2*((1000/(1+np.exp( -((degrees-min_d)/(max_d-min_d)-0.6)*0.5 ))) + 10).astype(np.int64)
+    
+    if 'pos' in kwargs.keys:
+        pos = kwargs['pos']
+    else:
+        pos = dict(zip(range(PS.num_nodes), np.flip(PS.node_positions.detach().numpy(), axis=1)))
 
-    nx.draw(PS_nx, ax=ax, pos=dict(zip(range(PS.num_nodes), np.flip(PS.node_positions.detach().numpy(), axis=1))), 
-                          node_color=PS.node_positions[:,1].detach().numpy(), cmap=plt.cm.rainbow,
+    nx.draw(PS_nx, ax=ax, pos=pos, node_color=PS.node_positions[:,1].detach().numpy(), cmap=plt.cm.rainbow,
                           node_size=50, width=0.2)
     
     return fig, ax

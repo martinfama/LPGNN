@@ -31,7 +31,9 @@ def plot_degree_distribution(data:pyg.data.Data, log_scale=False, fit_powerlaw=F
 
     if fit_powerlaw:
         fit = infer_gamma(data)
-        k_space = np.logspace(np.log10(degrees.min()), np.log10(degrees.max()), 200)
-        ax.plot(k_space, powerlaw(k_space, fit.power_law.alpha-1, fit.power_law.alpha))
+        #k_space = np.logspace(np.log10(degrees.min()), np.log10(degrees.max()), fit.power_law.pdf().shape[0])
+        k_space = np.arange(fit.power_law.xmin, fit.power_law.xmin+fit.power_law.pdf().shape[0])
+        # ax.plot(k_space, powerlaw(k_space, fit.power_law.alpha-1, fit.power_law.alpha))
+        ax.plot(k_space, fit.power_law.pdf())
 
     return fig
