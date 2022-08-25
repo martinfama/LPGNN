@@ -57,10 +57,10 @@ def generatePSNetwork(N:int, avg_k:int, gamma:int, T:int, seed=0):
     data.T = T
     data.seed = seed
     # Initialize node positions as 2D torch tensor (r, theta). Both are zero
-    data.node_positions = th.zeros(size=(data.num_nodes,2))
+    data.node_polar_positions = th.zeros(size=(data.num_nodes,2))
     # Set node angular positions to random uniform distribution [0, 2π). We
     # can do this now because it doesn't affect PS algorithm.
-    data.node_positions[:,1] = th.rand(size=(data.num_nodes,))*2*th.pi
+    data.node_polar_positions[:,1] = th.rand(size=(data.num_nodes,))*2*th.pi
     # We _can't_ set node radial positions now because with popularity fading,
     # this coordinate changes as time progresses in the network generation.
 
@@ -82,8 +82,8 @@ def generatePSNetwork(N:int, avg_k:int, gamma:int, T:int, seed=0):
         # r_s(t) = beta*r_s + (1-beta)*r_t, w/ r_s = ln(s), r_t = ln(t)
         # which simulates popularity decay due to aging
         r_s = th.log(th.arange(1, t+1))
-        data.node_positions[:t,0] = 2*(1-beta)*r_t + 2*beta*r_s
-        data.node_positions[t,0]  = 2*r_t
+        data.node_polar_positions[:t,0] = 2*(1-beta)*r_t + 2*beta*r_s
+        data.node_polar_positions[t,0]  = 2*r_t
 
         #R_t is the radius of the circle containing the network in Euclidean space,
         #which in turn contains the entirety of the Hyperbolic space
@@ -95,7 +95,7 @@ def generatePSNetwork(N:int, avg_k:int, gamma:int, T:int, seed=0):
         
         #save all hyperbolic distances between new node and other nodes, and sort from shortes to longest
         #this sort method returns a tensor with two sub-tensors: d.values and d.indices (with indices sorted by values)
-        d = hyperbolic_distances(data.node_positions[:t-1], data.node_positions[t]).sort()
+        d = hyperbolic_distances(data.node_polar_positions[:t-1], data.node_polar_positions[t]).sort()
         
         #If T = 0, simply connect to the m hyperbolically closest nodes
         if T == 0:
@@ -113,6 +113,7 @@ def generatePSNetwork(N:int, avg_k:int, gamma:int, T:int, seed=0):
             data.edge_index = pyg.utils.to_undirected(data.edge_index)
     
     data.edge_index = data.edge_index.type(th.int64)
+    # data.node_positions = data.node_positions.names(['x', 'y'])
 
     return data
 
