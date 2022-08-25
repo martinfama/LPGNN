@@ -1,3 +1,4 @@
+from math import dist
 import igraph
 import numpy as np
 import torch as th
@@ -41,11 +42,16 @@ def hyperbolic_distances(position_list:th.Tensor, position_single:th.Tensor):
 def hyperbolic_distance_matrix(positions:th.Tensor):
     N = positions.shape[0]
     d = th.Tensor([])
+    f = open('temp.txt', 'a')
     for i in range(N):
         #distances = th.stack((th.full((N-i-1,), i), th.arange(i+1, N), hyperbolic_distances(positions[i+1:], positions[i])))
         distances = hyperbolic_distances(positions[i+1:], positions[i])
         # d = th.cat((d, distances), dim=1)
         d = th.cat((d, distances), dim=0)
+        if i % 100 == 0:
+            np.savetxt(f, d.detach().numpy())       
+            print('\r', i, distances.shape, d.shape, end='')
+            d = th.Tensor([])
     return d
 
 # metrics for node pairs. define all in a standard way so that the precision-recall function
