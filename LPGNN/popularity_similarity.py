@@ -106,9 +106,10 @@ def generatePSNetwork(N:int, avg_k:int, gamma:int, T:int, seed=0):
         else:
             # probability that the new node connects to the other nodes in the network
             p = 1 / (1 + th.exp((d.values - R_t)/(2*T)))
+            p = th.nan_to_num(p, nan=0)
             # get m nodes to connect to, sampled by the probabilities given by p.values
             selected_nodes = np.random.choice(d.indices.detach().numpy(), size=m, p=(p/th.sum(p)).detach().numpy(), replace=False)
-            new_edges = th.stack([selected_nodes, th.empty(m).fill_(t)])
+            new_edges = th.stack([th.Tensor(selected_nodes), th.empty(m).fill_(t)])
             data.edge_index = th.cat((data.edge_index, new_edges), dim=1)
             data.edge_index = pyg.utils.to_undirected(data.edge_index)
     
@@ -127,12 +128,12 @@ def drawPSNetwork(PS:pyg.data.Data, **kwargs):
 
     #node_size = 2*((1000/(1+np.exp( -((degrees-min_d)/(max_d-min_d)-0.6)*0.5 ))) + 10).astype(np.int64)
     
-    if 'pos' in kwargs.keys:
-        pos = kwargs['pos']
+    if 'pos' in kwargs:
+        pos = dict(zip(range(PS.num_nodes), np.flip(kwargs.get('pos').detach().numpy(), axis=1)))
     else:
-        pos = dict(zip(range(PS.num_nodes), np.flip(PS.node_positions.detach().numpy(), axis=1)))
+        pos = dict(zip(range(PS.num_nodes), np.flip(PS.node_polar_positions.detach().numpy(), axis=1)))
 
-    nx.draw(PS_nx, ax=ax, pos=pos, node_color=PS.node_positions[:,1].detach().numpy(), cmap=plt.cm.rainbow,
+    nx.draw(PS_nx, ax=ax, pos=pos, node_color=PS.node_polar_positions[:,1].detach().numpy(), cmap=plt.cm.rainbow,
                           node_size=50, width=0.2)
     
     return fig, ax

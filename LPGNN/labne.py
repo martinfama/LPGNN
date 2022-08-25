@@ -1,17 +1,9 @@
 import torch as th
 import torch_geometric as pyg
 
-import igraph
-import networkx as nx
-import random
 import numpy as np
-import matplotlib.pyplot as plt
-import matplotlib
 import scipy
 import scipy.optimize
-import pandas as pd
-import copy
-import time
 from .metrics import *
 from .utils import infer_gamma
 
@@ -33,6 +25,7 @@ def generateLaBNE(data:pyg.data.Data, only_coordinates=False):
     """
 
     N = data.num_nodes
+    print(N)
 
     #get Laplacian matrix of the graph (L = D - A). We pass it to a sparse matrix type supported by SciPy
     #so that we can use scipy's sparse linear algebra tools
@@ -51,22 +44,23 @@ def generateLaBNE(data:pyg.data.Data, only_coordinates=False):
             eigenvalues, eigenvectors = scipy.sparse.linalg.eigs(A=L+Levenberg_c, k=3, which='LM', sigma=0, return_eigenvectors=True)
     else:        
         try:
-            eigenvalues, eigenvectors = scipy.sparse.linalg.eigs(A=L, k=3, which='LM', sigma=0, return_eigenvectors=True, tol=1E-7, maxiter=5000)
+            eigenvalues, eigenvectors = scipy.sparse.linalg.eigs(A=L, k=3, which='LM', sigma=0, return_eigenvectors=True, tol=1E-9, maxiter=50000)
         except(RuntimeError):
             Levenberg_c = np.zeros(np.shape(L))
             np.fill_diagonal(Levenberg_c, 0.01)
             Levenberg_c = scipy.sparse.coo_matrix(Levenberg_c)
-            eigenvalues, eigenvectors = scipy.sparse.linalg.eigs(A=L+Levenberg_c, k=3, which='LM', sigma=0, return_eigenvectors=True, tol=1E-7, maxiter=5000)
+            eigenvalues, eigenvectors = scipy.sparse.linalg.eigs(A=L+Levenberg_c, k=3, which='LM', sigma=0, return_eigenvectors=True, tol=1E-9, maxiter=50000)
 
     eigenvectors = np.transpose(eigenvectors)
     x, y = th.Tensor(eigenvectors[1].real), th.Tensor(eigenvectors[2].real)
     r = th.zeros(N)
     theta = th.atan2(y, x)
-    theta = (theta + 2*th.pi) % (2*th.pi)
+    #theta = (theta + 2*th.pi) % (2*th.pi)
 
     degrees = pyg.utils.degree(data.edge_index[0])
     # sort degrees for radial positioning
     degrees = degrees.sort(descending=True)
+    print(degrees.indices.shape)
     m = int(degrees.values.mean()/2)
     gamma = infer_gamma(data).power_law.alpha
     beta = 1/(gamma-1)
