@@ -19,7 +19,7 @@ import sklearn.svm
 import sklearn.neighbors
 from sklearn.metrics import PrecisionRecallDisplay
 
-from .metrics import *
+from .graph_metrics import *
 
 from . import debug_print
 

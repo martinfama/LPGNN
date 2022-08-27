@@ -2,7 +2,7 @@ import numpy as np
 import torch
 
 import matplotlib.pyplot as plt
-from .metrics import *
+from .graph_metrics import *
 
 
 def plot_pr_curves(PR_list, save_name=''):

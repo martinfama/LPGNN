@@ -4,7 +4,7 @@ import torch_geometric as pyg
 import numpy as np
 import scipy
 import scipy.optimize
-from .metrics import *
+from .graph_metrics import *
 from .utils import infer_gamma
 
 #generates the Laplacian Based Network Embedding for a given Network

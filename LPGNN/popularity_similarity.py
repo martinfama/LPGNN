@@ -6,7 +6,7 @@ import torch as th
 import torch_geometric as pyg
 import networkx as nx
 
-from .metrics import *
+from .graph_metrics import *
 
 # #infer some of the network's properties, such as the average node degree
 # #and the average clustering coefficient

@@ -9,7 +9,7 @@ import pdb
 
 import LPGNN.network_analysis as na
 import LPGNN.LinkPrediction as LinkPrediction
-import LPGNN.metrics as metrics
+import LPGNN.graph_metrics as graph_metrics
 
 device = 'cpu'
 
