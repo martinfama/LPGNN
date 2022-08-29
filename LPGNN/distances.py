@@ -8,6 +8,11 @@ to save to file, read from file, etc. All inputs and outputs are given as pytorc
 import pandas as pd
 import torch as th
 
+def hyperbolic_distances(positions:th.Tensor, pos_0:th.Tensor):
+    angular_distance = th.min(2*th.pi-th.abs(positions[:,1]-pos_0[1]), th.abs(positions[:,1]-pos_0[1]))
+    d = th.arccosh(th.cosh(positions[:,0])*th.cosh(pos_0[0]) - th.sinh(positions[:,0])*th.sinh(pos_0[0])*th.cos(angular_distance))
+    return d
+
 def hyperbolic_distance(positions:th.Tensor, idx:th.Tensor):
     """ Calculates hyperbolic distances between positions given as a list of [r, theta] values.
         Uses idx to indicate which positions to compare.

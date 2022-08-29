@@ -4,10 +4,12 @@ import torch_geometric as pyg
 import numpy as np
 import scipy
 import scipy.optimize
+
 from .graph_metrics import *
 from .utils import infer_gamma
+from .embedding import *
 
-#generates the Laplacian Based Network Embedding for a given Network
+@embedding
 def generateLaBNE(data:pyg.data.Data, only_coordinates=False):
     """ Given a graph, returns the LaBNE embedding as described in [1].
 
@@ -25,7 +27,6 @@ def generateLaBNE(data:pyg.data.Data, only_coordinates=False):
     """
 
     N = data.num_nodes
-    print(N)
 
     #get Laplacian matrix of the graph (L = D - A). We pass it to a sparse matrix type supported by SciPy
     #so that we can use scipy's sparse linear algebra tools

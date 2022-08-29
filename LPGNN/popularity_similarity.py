@@ -6,24 +6,7 @@ import torch as th
 import torch_geometric as pyg
 import networkx as nx
 
-from .graph_metrics import *
-
-# #infer some of the network's properties, such as the average node degree
-# #and the average clustering coefficient
-# def infer_avg_k(self, inplace=False):
-#     avg_k = np.average(self.graph.degree())
-#     if inplace: self.avg_k = avg_k
-#     return avg_k
-
-# def infer_clustering_coefficient(self, inplace=False):
-#     clustering_coeff = self.graph.transitivity_avglocal_undirected()
-#     if inplace: self.clustering_coeff = clustering_coeff
-#     return clustering_coeff
-
-# def infer_gamma(self, inplace=False):
-#     gamma = igraph.power_law_fit(data=self.graph.degree()).alpha
-#     if inplace: self.gamma = gamma
-#     return gamma
+from .distances import *
 
 #generate a network according to the PS model       #seed is for randomness
 def generatePSNetwork(N:int, avg_k:int, gamma:int, T:int, seed=0):
@@ -119,7 +102,10 @@ def generatePSNetwork(N:int, avg_k:int, gamma:int, T:int, seed=0):
     return data
 
 def drawPSNetwork(PS:pyg.data.Data, **kwargs):
-    fig, ax = plt.subplots(figsize=(10,10), subplot_kw={'projection': 'polar'})
+    if kwargs.get('polar_projection'):
+        fig, ax = plt.subplots(figsize=(10,10), subplot_kw={'projection': 'polar'})
+    else:
+        fig, ax = plt.subplots(figsize=(10,10))
     PS_nx = pyg.utils.to_networkx(PS, to_undirected=True)
     
     degrees = pyg.utils.degree(PS.edge_index[0]).detach().numpy()
@@ -128,13 +114,18 @@ def drawPSNetwork(PS:pyg.data.Data, **kwargs):
 
     #node_size = 2*((1000/(1+np.exp( -((degrees-min_d)/(max_d-min_d)-0.6)*0.5 ))) + 10).astype(np.int64)
     
-    if 'pos' in kwargs:
-        pos = dict(zip(range(PS.num_nodes), np.flip(kwargs.get('pos').detach().numpy(), axis=1)))
+    if 'pos_name' in kwargs:
+        named_positions = getattr(PS, kwargs.get('pos_name')).detach().numpy()
+        pos = dict(zip(range(PS.num_nodes), np.flip(named_positions, axis=1)))
     else:
         pos = dict(zip(range(PS.num_nodes), np.flip(PS.node_polar_positions.detach().numpy(), axis=1)))
 
-    nx.draw(PS_nx, ax=ax, pos=pos, node_color=PS.node_polar_positions[:,1].detach().numpy(), cmap=plt.cm.rainbow,
+    if getattr(PS, 'node_polar_positions') is not None:
+        node_color = PS.node_polar_positions[:,1].detach().numpy()
+    else:
+        node_color = 'cornflowerblue'
+
+    nx.draw(PS_nx, ax=ax, pos=pos, node_color=node_color, cmap=plt.cm.rainbow,
                           node_size=50, width=0.2)
-    
+
     return fig, ax
-    
