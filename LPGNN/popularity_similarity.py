@@ -102,10 +102,11 @@ def generatePSNetwork(N:int, avg_k:int, gamma:int, T:int, seed=0):
     return data
 
 def drawPSNetwork(PS:pyg.data.Data, **kwargs):
-    if kwargs.get('polar_projection'):
-        fig, ax = plt.subplots(figsize=(10,10), subplot_kw={'projection': 'polar'})
-    else:
-        fig, ax = plt.subplots(figsize=(10,10))
+    
+    if kwargs.get('polar_projection'): subplot_kw={'projection': 'polar'}
+    else: subplot_kw=None
+
+    fig, ax = plt.subplots(figsize=kwargs.get('figsize', (10,10)), subplot_kw=subplot_kw)
     PS_nx = pyg.utils.to_networkx(PS, to_undirected=True)
     
     degrees = pyg.utils.degree(PS.edge_index[0]).detach().numpy()
@@ -126,6 +127,6 @@ def drawPSNetwork(PS:pyg.data.Data, **kwargs):
         node_color = 'cornflowerblue'
 
     nx.draw(PS_nx, ax=ax, pos=pos, node_color=node_color, cmap=plt.cm.rainbow,
-                          node_size=50, width=0.2)
+                          node_size=50, width=0.2, with_labels=kwargs.get('with_labels', False))
 
     return fig, ax
