@@ -102,6 +102,22 @@ def generatePSNetwork(N:int, avg_k:int, gamma:int, T:int, seed=0):
     return data
 
 def drawPSNetwork(PS:pyg.data.Data, **kwargs):
+    """ Function to plot a PS like network. More generally, it can accept a PyTorch-Geometric Data object
+        with coordinates attached. The coordinates are assumed to be in the form of a 2D torch tensor, which
+        can be either cartesian or polar coordinates.
+
+    Args:
+        PS (pyg.data.Data): The network to be plotted. Must have coordinates attached.
+        **kwargs: Additional keyword arguments to be passed to pyg.plot.draw_graph.
+          |
+          ---> 'polar_projection' (bool): Whether to plot in polar coordinates. Defaults to False.
+          ---> 'node_size' (int): Size of nodes. Defaults to 50.
+          ---> 'with_labels' (bool): Whether to label nodes. Defaults to False.
+          ---> 'pos_name' (str): Name of the position attribute. Defaults to 'node_polar_positions'.
+
+    Returns:
+        _type_: _description_
+    """
     
     if kwargs.get('polar_projection'): subplot_kw={'projection': 'polar'}
     else: subplot_kw=None
@@ -109,24 +125,19 @@ def drawPSNetwork(PS:pyg.data.Data, **kwargs):
     fig, ax = plt.subplots(figsize=kwargs.get('figsize', (10,10)), subplot_kw=subplot_kw)
     PS_nx = pyg.utils.to_networkx(PS, to_undirected=True)
     
-    degrees = pyg.utils.degree(PS.edge_index[0]).detach().numpy()
-    max_d = np.max(degrees)
-    min_d = np.min(degrees)
-
+    # control node size by degree
+    #degrees = pyg.utils.degree(PS.edge_index[0]).detach().numpy()
+    #max_d = np.max(degrees)
+    #min_d = np.min(degrees)
     #node_size = 2*((1000/(1+np.exp( -((degrees-min_d)/(max_d-min_d)-0.6)*0.5 ))) + 10).astype(np.int64)
     
-    if 'pos_name' in kwargs:
-        named_positions = getattr(PS, kwargs.get('pos_name')).detach().numpy()
-        pos = dict(zip(range(PS.num_nodes), np.flip(named_positions, axis=1)))
-    else:
-        pos = dict(zip(range(PS.num_nodes), np.flip(PS.node_polar_positions.detach().numpy(), axis=1)))
+    named_positions = getattr(PS, kwargs.get('pos_name', 'node_polar_positions')).detach().numpy()
+    pos = dict(zip(range(PS.num_nodes), np.flip(named_positions, axis=1)))
 
-    if getattr(PS, 'node_polar_positions') is not None:
-        node_color = PS.node_polar_positions[:,1].detach().numpy()
-    else:
-        node_color = 'cornflowerblue'
+    if getattr(PS, 'node_polar_positions') is not None: node_color = PS.node_polar_positions[:,1].detach().numpy()
+    else: node_color = 'cornflowerblue'
 
     nx.draw(PS_nx, ax=ax, pos=pos, node_color=node_color, cmap=plt.cm.rainbow,
-                          node_size=50, width=0.2, with_labels=kwargs.get('with_labels', False))
+                          node_size=kwargs.get('node_size', 50), width=0.2, with_labels=kwargs.get('with_labels', False))
 
     return fig, ax
