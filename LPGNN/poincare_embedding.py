@@ -6,7 +6,7 @@ from gensim.models.poincare import PoincareModel
 from .embedding import *
 
 @embedding
-def poincare_embedding(data:pyg.data.Data, epochs=100, only_coordinates=False, **kwargs):
+def poincare_embedding(data:pyg.data.Data, initial_coordinates=None, epochs=100, only_coordinates=False, **kwargs):
     """ Apply the Poincaré embedding [1] to the given graph.
 
         [1] Nickel, M., & Kiela, D. (2017). Poincaré Embeddings for Learning Hierarchical Representations. arXiv. https://doi.org/10.48550/ARXIV.1705.08039 
@@ -18,6 +18,10 @@ def poincare_embedding(data:pyg.data.Data, epochs=100, only_coordinates=False, *
     """
     
     model = PoincareModel(data.edge_index.T.detach().numpy(), **kwargs)
+    if initial_coordinates is not None:
+        pos = getattr(data, initial_coordinates).detach().numpy()
+        for node in range(data.num_nodes):
+            model.kv.vectors[node] = pos[node]
     model.train(epochs)
 
     embeddings = np.array([model.kv[node] for node in range(data.num_nodes)])

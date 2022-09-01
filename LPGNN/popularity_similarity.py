@@ -23,7 +23,7 @@ def generatePSNetwork(N:int, avg_k:int, gamma:int, T:int, seed=47, **kwargs):
         seed (int, optional): Seed for randomness (set by PyTorch's manual_seed method). Defaults to 0.
         **kwargs:
                 |
-                |--> 'normalize_radius' (bool). Whether to normalize maximum network radius to 1. 
+                |--> 'normalize_radius' (bool). Whether to normalize maximum network radius to 1. Defaults to False.
 
 
     Returns:
