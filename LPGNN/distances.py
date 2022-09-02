@@ -3,7 +3,7 @@
 """Provides a suite of functions related to calculating distances in Euclidean and Hyperbolic space.
 Includes functions which simply calculate the distances between position lists, and also functions
 to save to file, read from file, etc. All inputs and outputs are given as pytorch Tensors.
-""" 
+"""
 
 import pandas as pd
 import torch as th
@@ -31,7 +31,11 @@ def hyperbolic_distance(positions:th.Tensor, idx:th.Tensor):
 def hyperbolic_distance_list_to_file(positions:th.Tensor, chunk_size:int, filename:str):
     """ Calculates _all_ hyperbolic distances by comparing all positions. Since the memory overhead
         can become huge for moderately large graphs (more than 10.000 nodes), we save these values to
-        a file in chunks. 
+        a file in chunks. The save format is:
+            idx_1, idx_2, distance
+            (int), (int), (float)
+             ... ,  ... ,   ...
+        where idx_1 and idx_2 are the indices of the positions compared, and distance is the hyperbolic distance.
 
     Args:
         positions (th.Tensor): The list of positions given as [r,theta] values
@@ -39,13 +43,23 @@ def hyperbolic_distance_list_to_file(positions:th.Tensor, chunk_size:int, filena
         filename (str): File to save to.
     """
     N = positions.shape[0]
-    #f = open(filename, 'a')
+    # Get the indices of node pairs corresponding to the upper triangle of the distance matrix,
+    # since the distance matrix is symmetric. We omit the diagonal by setting offset to 1.
     idx = th.triu_indices(*(N, N), offset=1)
+    # iterate over the indices in chunks of chunk_size.
     for index in range(0, idx.shape[1]-chunk_size, chunk_size):
         idx_t = idx[:,index:index+chunk_size]
         d = hyperbolic_distance(positions, idx_t)
-        pd.DataFrame(d.detach().numpy()).to_csv(filename, mode='a', header=False, index=False)
+        d = th.nan_to_num(d, nan=th.inf)
+        d = pd.DataFrame(th.stack([*idx_t, d], dim=0).T.detach().numpy())
+        d[[0,1]] = d[[0,1]].astype(int)
+        d[[2]] = d[[2]].astype(float).round(9)
+        d.to_csv(filename, mode='a', header=False, index=False)
     # get what's leftover of idx.
     idx_t = idx[:,index+chunk_size:]
     d = hyperbolic_distance(positions, idx_t)
-    pd.DataFrame(d.detach().numpy()).to_csv(filename, mode='a', header=False, index=False)
+    d = th.nan_to_num(d, nan=th.inf)
+    d = pd.DataFrame(th.stack([*idx_t, d], dim=0).T.detach().numpy())
+    d[[0,1]] = d[[0,1]].astype(int)
+    d[[2]] = d[[2]].astype(float).round(9)
+    d.to_csv(filename, mode='a', header=False, index=False)

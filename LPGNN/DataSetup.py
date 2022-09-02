@@ -76,18 +76,31 @@ def train_test_split(data, test_ratio, val_ratio, neg_samples=False):
     """Split a data graph object (``torch.Tensor``) into train, test and validation sets of edges.
 
     Args:
-        data (torch.Tensor): Full graph data.
+        data (pyg.data.Data): Full graph data.
         test_ratio (_type_): Size of test set as a fraction of the total size of graph.
         val_ratio (_type_): Size of validation set as a fraction of the total size of graph.
         neg_samples (bool, optional): Whether to include negative samples (i.e. non existent edges). 
                                       Defaults to False.
 
     Returns:
-        tuple: A tuple containing the three network subsets: (train_data, test_data, val_data).
+        data_c (pyg.data.Data): A copy of the input data object with the train, test and validation masks.
     """
+    data_c = data.clone()
     RLS = pyg_T.RandomLinkSplit(is_undirected=True, 
                                 num_val=val_ratio, num_test=test_ratio,
                                 add_negative_train_samples=neg_samples,
                                 split_labels=True)
-    train_data, val_data, test_data = RLS(data)
-    return train_data, val_data, test_data
+    train_data, val_data, test_data = RLS(data_c)
+    data_c.train_pos_edge_label = train_data.pos_edge_label
+    data_c.train_pos_edge_label_index = train_data.pos_edge_label_index
+    data_c.train_neg_edge_label = train_data.neg_edge_label
+    data_c.train_neg_edge_label_index = train_data.neg_edge_label_index
+    data_c.val_pos_edge_label = val_data.pos_edge_label
+    data_c.val_pos_edge_label_index = val_data.pos_edge_label_index
+    data_c.val_neg_edge_label = val_data.neg_edge_label
+    data_c.val_neg_edge_label_index = val_data.neg_edge_label_index
+    data_c.test_pos_edge_label = test_data.pos_edge_label
+    data_c.test_pos_edge_label_index = test_data.pos_edge_label_index
+    data_c.test_neg_edge_label = test_data.neg_edge_label
+    data_c.test_neg_edge_label_index = test_data.neg_edge_label_index
+    return data_c

@@ -1,7 +1,12 @@
-import numpy as np
-import torch
+import os
 
+import numpy as np
+import pandas as pd
 import matplotlib.pyplot as plt
+import networkx as nx
+import torch as th
+import torch_geometric as pyg
+
 from .graph_metrics import *
 
 
@@ -24,8 +29,8 @@ def plot_pr_curves(PR_list, save_name=''):
     plt.close()
 
 def precision_recall(test_data, val_data, predictions):
-    """Generates a Precision-Recall curve, given the predictions 
-    and the test data. tp (true positive) cases are added until 
+    """Generates a Precision-Recall curve, given the predictions
+    and the test data. tp (true positive) cases are added until
     recall is 1 (tp == test_pos_edge_cases).
 
     Args:
@@ -60,8 +65,8 @@ def precision_recall(test_data, val_data, predictions):
 def precision_recall_trained_model(model, train_data, val_data, test_data, norm='prob_adj'):
     """Generates a Precision-Recall curve, given the trained model, train data and test data.
     For now, this assumes the model generates a per-node feature vector (``z``), and uses that
-    to generate a probability matrix (``prob_adj``) which indicates the probability of an edge 
-    being present. 
+    to generate a probability matrix (``prob_adj``) which indicates the probability of an edge
+    being present.
 
     Args:
         model (torch.nn.Model): A GNN model, already trained.
@@ -69,7 +74,7 @@ def precision_recall_trained_model(model, train_data, val_data, test_data, norm=
         test_data (torch.Tensor): Associated test data.
 
     Returns:
-        tuple: a tuple given by (R, P, predictions) where R is the recall, P is the precision 
+        tuple: a tuple given by (R, P, predictions) where R is the recall, P is the precision
                and predictions is the list of predictions.
     """
     z = model.forward(train_data.x, train_data.pos_edge_label_index).detach().numpy() #forward
@@ -88,3 +93,62 @@ def precision_recall_trained_model(model, train_data, val_data, test_data, norm=
     # sort the list by probability
     prob_list = sorted(prob_list, key=lambda x: x[2], reverse=True)
     return precision_recall(test_data, val_data, prob_list)
+
+def sort_distance_file(filename, sort_dir='asc'):
+    """ Sort a distance file by distance, and save it to a new file. Assumes
+        the file is in the format of a list of 3-tuples, each containing i,j node 
+        indices and the corresponding distance.
+
+    Args:
+        filename (_type_): The file to sort. The output file will be saved to the same directory, with the name {filename}_sorted.
+        sort_dir (str, optional): whether to sort in ascending or descending order. Defaults to 'asc'.
+    """
+    if sort_dir == 'asc': sort_dir = ''
+    else: sort_dir = 'r'
+    os.system(f"LC_ALL=C sort -t',' -gs{sort_dir}k3 {filename} -o {filename}_sorted")
+
+def precision_recall_score_file(data:pyg.data.Data, filename:str, chunk_size=10000, step_size=1):
+    """ Generates a Precision-Recall curve, given a file of sorted scores.
+
+    Args:
+        data (pyg.data.Data): The graph to analyze. Is assumed to contain train and test masks.
+        filename (str): The file to read predictions from. The file should be in the format of a list of 3-tuples, each containing i,j node indices and the corresponding score.
+
+    Returns:
+        tuple: a tuple given by (R, P, predictions) where R is the recall, P is the precision
+               and predictions is the list of predictions.
+    """
+
+    # total_test_edges = data.test_mask.sum().item()
+    train_edges = data.train_pos_edge_label_index.T.detach().numpy()
+    test_edges = data.test_pos_edge_label_index.T.detach().numpy()
+    test_nx = nx.Graph(nx.from_edgelist(test_edges))
+    total_test_edges = test_edges.shape[0]
+
+    tp = 0
+    fp = 0
+    R = 0
+    P = 0
+    R_list = []
+    P_list = []
+
+    # read the file in chunks
+    index = 0
+    df = pd.read_csv(filename, header=None, chunksize=chunk_size)
+    while 1:
+        chunk = df.get_chunk(chunk_size).to_numpy()[:,:2].astype(np.int)
+        for edge in chunk:
+            # check if the edge is in the test set
+            # if th.any(((edge[0] == test_edges)[0]*(edge[1] == test_edges)[1])[0]): tp += 1
+            if test_nx.has_edge(*edge):  tp += 1
+            else: fp += 1
+            P = tp / (tp + fp)
+            R = tp / total_test_edges
+            if index % step_size == 0:
+                print(f"\rindex: {index}, R: {R:.3f}, P: {P:.3f}", end='')
+                R_list.append(R)
+                P_list.append(P)
+            # if all positive test cases have been accounted for (i.e. R = 1), break
+            if tp == total_test_edges: return R_list, P_list
+            index += 1
+    return R_list, P_list
