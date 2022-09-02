@@ -7,6 +7,7 @@ import networkx as nx
 import torch as th
 import torch_geometric as pyg
 
+from .distances import *
 from .graph_metrics import *
 
 
@@ -105,9 +106,9 @@ def sort_distance_file(filename, sort_dir='asc'):
     """
     if sort_dir == 'asc': sort_dir = ''
     else: sort_dir = 'r'
-    os.system(f"LC_ALL=C sort -t',' -gs{sort_dir}k3 {filename} -o {filename}_sorted")
+    os.system(f"LC_ALL=C sort -t',' -gs{sort_dir}k4 {filename} -o {filename}_sorted")
 
-def precision_recall_score_file(data:pyg.data.Data, filename:str, chunk_size=10000, step_size=1):
+def precision_recall_score_file(data:pyg.data.Data, position_name:str, filename:str, chunk_size=10000, step_size=1, skip_file_prep=False):
     """ Generates a Precision-Recall curve, given a file of sorted scores.
 
     Args:
@@ -119,11 +120,23 @@ def precision_recall_score_file(data:pyg.data.Data, filename:str, chunk_size=100
                and predictions is the list of predictions.
     """
 
-    # total_test_edges = data.test_mask.sum().item()
-    train_edges = data.train_pos_edge_label_index.T.detach().numpy()
-    test_edges = data.test_pos_edge_label_index.T.detach().numpy()
-    test_nx = nx.Graph(nx.from_edgelist(test_edges))
-    total_test_edges = test_edges.shape[0]
+    total_test_edges = data.test_pos_edge_label_index.shape[1]
+    
+    N = data.num_nodes
+    if not skip_file_prep:
+        print('Test mask')
+        test_mask = th.zeros( N*(N-1)//2 )
+        def d2_index_to_d1(i, j, N):
+            """ Convert a 2D index to a 1D index, considering the upper triangular matrix (main diagonal not included). """
+            return i*N + j - (i+1)*(i+2)/2
+        # Set the test mask, which is passed to `hyperbolic_distance_list_to_file` to save if edge exists alongside the distance
+        test_mask[d2_index_to_d1(data.test_pos_edge_label_index[0], data.test_pos_edge_label_index[1], N).type(th.long)] = 1
+        print('Done')
+        # save the predictions to a file, and sort it
+        print('Hyperbolic')
+        hyperbolic_distance_list_to_file(getattr(data, position_name), chunk_size=chunk_size, filename=filename, extra_info_tensor=test_mask)
+        print('Done')
+        sort_distance_file(filename, sort_dir='asc')
 
     tp = 0
     fp = 0
@@ -134,21 +147,18 @@ def precision_recall_score_file(data:pyg.data.Data, filename:str, chunk_size=100
 
     # read the file in chunks
     index = 0
-    df = pd.read_csv(filename, header=None, chunksize=chunk_size)
-    while 1:
-        chunk = df.get_chunk(chunk_size).to_numpy()[:,:2].astype(np.int)
-        for edge in chunk:
-            # check if the edge is in the test set
-            # if th.any(((edge[0] == test_edges)[0]*(edge[1] == test_edges)[1])[0]): tp += 1
-            if test_nx.has_edge(*edge):  tp += 1
-            else: fp += 1
-            P = tp / (tp + fp)
-            R = tp / total_test_edges
-            if index % step_size == 0:
-                print(f"\rindex: {index}, R: {R:.3f}, P: {P:.3f}", end='')
-                R_list.append(R)
-                P_list.append(P)
-            # if all positive test cases have been accounted for (i.e. R = 1), break
-            if tp == total_test_edges: return R_list, P_list
-            index += 1
+    for chunk in pd.read_csv(filename+'_sorted', header=None, chunksize=step_size, iterator=True):
+        # get the 3rd column, which is indicates whether the edge exists in the test set
+        chunk = chunk.to_numpy()[:,2].astype(np.int)
+        tp_ = chunk.sum() # number of true positives in this chunk
+        tp += tp_ # add to the total number of true positives
+        fp += chunk.shape[0] - tp_ # add to the total number of false positives
+        P = tp / (tp + fp) 
+        R = tp / total_test_edges
+        print(f"\rindex: {index}, R: {R:.3f}, P: {P:.3f}", end='')
+        R_list.append(R)
+        P_list.append(P)
+        # if all positive test cases have been accounted for (i.e. R = 1), break
+        if tp == total_test_edges: return R_list, P_list
+        index += chunk.shape[0]
     return R_list, P_list
