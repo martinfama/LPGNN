@@ -1,3 +1,4 @@
+from tqdm import tqdm
 import numpy as np
 import torch as th
 import torch_geometric as pyg
@@ -5,30 +6,145 @@ from gensim.models.poincare import PoincareModel
 
 from .embedding import *
 
-@embedding
-def poincare_embedding(data:pyg.data.Data, initial_coordinates=None, epochs=100, only_coordinates=False, **kwargs):
-    """ Apply the Poincaré embedding [1] to the given graph.
+class Model(th.nn.Module):
+    def __init__(self, dim, size, init_weights=1e-3, epsilon=1e-7):
+        super().__init__()
+        self.embedding = th.nn.Embedding(size, dim, sparse=False)
+        self.embedding.weight.data.uniform_(-init_weights, init_weights)
+        self.epsilon = epsilon
 
-        [1] Nickel, M., & Kiela, D. (2017). Poincaré Embeddings for Learning Hierarchical Representations. arXiv. https://doi.org/10.48550/ARXIV.1705.08039 
+    def dist(self, u, v):
+        sqdist = th.sum((u - v) ** 2, dim=-1)
+        squnorm = th.sum(u ** 2, dim=-1)
+        sqvnorm = th.sum(v ** 2, dim=-1)
+        x = 1 + 2 * sqdist / ((1 - squnorm) * (1 - sqvnorm)) + self.epsilon
+        z = th.sqrt(x ** 2 - 1)
+        return th.log(x + z)
 
-    Args:
-        data (pyg.data.Data): The graph to embed.
-    Returns:
-        pyg.data.Data: The graph with the embedding.
-    """
-    
-    model = PoincareModel(data.edge_index.T.detach().numpy(), **kwargs)
-    if initial_coordinates is not None:
-        pos = getattr(data, initial_coordinates).detach().numpy()
-        for node in range(data.num_nodes):
-            model.kv.vectors[node] = pos[node]
-    model.train(epochs)
+    def forward(self, inputs):
+        e = self.embedding(inputs)
+        o = e.narrow(dim=1, start=1, length=e.size(1) - 1)
+        s = e.narrow(dim=1, start=0, length=1).expand_as(o)
 
-    embeddings = np.array([model.kv[node] for node in range(data.num_nodes)])
-    
-    if only_coordinates:
-        return embeddings
+        return self.dist(s, o)
+
+@th.jit.script
+def lambda_x(x: th.Tensor):
+    return 2 / (1 - th.sum(x ** 2, dim=-1, keepdim=True))
+
+@th.jit.script
+def mobius_add(x: th.Tensor, y: th.Tensor):
+    x2 = th.sum(x ** 2, dim=-1, keepdim=True)
+    y2 = th.sum(y ** 2, dim=-1, keepdim=True)
+    xy = th.sum(x * y, dim=-1, keepdim=True)
+
+    num = (1 + 2 * xy + y2) * x + (1 - x2) * y
+    denom = 1 + 2 * xy + x2 * y2
+
+    return num / denom.clamp_min(1e-15)
+
+@th.jit.script
+def expm(p: th.Tensor, u: th.Tensor):
+    return p + u
+    # for exact exponential mapping
+    #norm = th.sqrt(th.sum(u ** 2, dim=-1, keepdim=True))
+    #return mobius_add(p, th.tanh(0.5 * lambda_x(p) * norm) * u / norm.clamp_min(1e-15))
+
+@th.jit.script
+def grad(p: th.Tensor):
+    p_sqnorm = th.sum(p.data ** 2, dim=-1, keepdim=True)
+    return p.grad.data * ((1 - p_sqnorm) ** 2 / 4).expand_as(p.grad.data)
+
+class RiemannianSGD(th.optim.Optimizer):
+    def __init__(self, params):
+        super(RiemannianSGD, self).__init__(params, {})
+
+    def step(self, lr=0.3):
+        for group in self.param_groups:
+            for p in group['params']:
+                if p.grad is None:
+                    continue
+
+                d_p = grad(p)
+                d_p.mul_(-lr)
+
+                p.data.copy_(expm(p.data, d_p))
+
+def poincare_embedding(data:pyg.data.Data, NEG_SAMPLES=2, DIMENSIONS=2, epochs=100):
+
+    th.set_default_dtype(th.float64)
+    degrees = pyg.utils.degree(data.edge_index[0], dtype=th.float64)
+    degrees = degrees / degrees.sum()
+    cat_dist = th.distributions.Categorical(degrees)
+    unif_dist = th.distributions.Categorical(probs=th.ones(data.num_nodes,) / data.num_nodes)
+    model = Model(dim=DIMENSIONS, size=data.num_nodes)
+    optimizer = RiemannianSGD(model.parameters())
+
+    loss_func = th.nn.CrossEntropyLoss()
+    batch_X = th.zeros(10, NEG_SAMPLES + 2, dtype=th.long)
+    batch_y = th.zeros(10, dtype=th.long)
+
+    lr = 0.3
+    sampler = unif_dist
+    neighbor_sampler = pyg.loader.NeighborSampler(data.edge_index, sizes=[-1])
+    epoch = 0
+    while True:
+        print(epoch)
+        if epoch == epochs:
+            break
+        if epoch < 20:
+            lr = 0.003
+            sampler = cat_dist
+        else:
+            lr = 0.3
+            sampler = unif_dist
+        epoch += 1
+        perm = th.randperm(data.edge_index.shape[1])
+        dataset_rnd = data.edge_index[:, perm]
+        #for i in tqdm(range(0, data.num_nodes - data.num_nodes % 10, 10)):
+        for i in range(0, data.num_nodes - data.num_nodes % 10, 10):
+            batch_X[:,:2] = dataset_rnd[:, i : i + 10].T
+            for j in range(10):
+                a = set(sampler.sample([2 * NEG_SAMPLES]).numpy())
+                negatives = list(a - (set(neighbor_sampler.sample(th.Tensor([batch_X[j, 0]]).reshape(-1,1).type(th.long)[0])) | set(neighbor_sampler.sample(th.Tensor([batch_X[j, 1]]).reshape(-1,1).type(th.long)[0]))))
+                batch_X[j, 2 : len(negatives)+2] = th.LongTensor(negatives[:NEG_SAMPLES])
+
+            optimizer.zero_grad()
+            preds = model(batch_X)
+
+            loss = loss_func(preds.neg(), batch_y)
+            loss.backward()
+            optimizer.step(lr=lr)
     
     data_Poincare = data.clone()
-    data_Poincare.PoincareEmbedding_node_positions = th.Tensor(embeddings)
+    data_Poincare.PoincareEmbedding_node_positions = model.embedding.weight
     return data_Poincare
+
+# @embedding
+# def poincare_embedding(data:pyg.data.Data, initial_coordinates=None, epochs=100, only_coordinates=False, **kwargs):
+#     """ Apply the Poincaré embedding [1] to the given graph.
+
+#         [1] Nickel, M., & Kiela, D. (2017). Poincaré Embeddings for Learning Hierarchical Representations. arXiv. https://doi.org/10.48550/ARXIV.1705.08039 
+
+#     Args:
+#         data (pyg.data.Data): The graph to embed.
+#     Returns:
+#         pyg.data.Data: The graph with the embedding.
+#     """
+    
+#     model = PoincareModel(data.edge_index.T.detach().numpy(), **kwargs)
+#     if initial_coordinates is not None:
+#         pos = getattr(data, initial_coordinates).detach().numpy()
+#         for node in range(data.num_nodes):
+#             model.kv.vectors[node] = pos[node]
+#     model.train(epochs)
+
+#     embeddings = np.array([model.kv[node] for node in range(data.num_nodes)])
+    
+#     if only_coordinates:
+#         return embeddings
+    
+#     data_Poincare = data.clone()
+#     data_Poincare.PoincareEmbedding_node_positions = th.Tensor(embeddings)
+#     return data_Poincare
+
