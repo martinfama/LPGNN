@@ -1,9 +1,17 @@
 import igraph
 import numpy as np
 import torch as th
+import torch_geometric as pyg
 
 # metrics for node pairs. define all in a standard way so that the precision-recall function
 # has a consistent interface, and you can select the metrics you want to use by name
+
+def CN(data:pyg.data.Data, u:int, v:int, **kwargs):
+    neighbor_sampler = pyg.loader.NeighborSampler(data.edge_index, sizes=[-1])
+    n_u = neighbor_sampler.sample([u])[1][1:]
+    n_v = neighbor_sampler.sample([v])[1][1:]
+    all_n, counts = th.cat((n_u, n_v), dim=0).unique(return_counts=True)
+    return all_n[th.where(counts == 2)].shape[0]
 
 ## Neighbourhood-based link predictors
 #label: 'CN'

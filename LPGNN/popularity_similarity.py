@@ -130,7 +130,9 @@ def drawPSNetwork(PS:pyg.data.Data, **kwargs):
     else: subplot_kw=None
 
     fig, ax = plt.subplots(figsize=kwargs.get('figsize', (10,10)), subplot_kw=subplot_kw)
-    PS_nx = pyg.utils.to_networkx(PS, to_undirected=True)
+    PS_c = PS.clone()
+    setattr(PS_c, kwargs.get('edge_index', 'edge_index'), PS_c.get(kwargs.get('edge_index', 'edge_index')))
+    PS_nx = pyg.utils.to_networkx(PS_c, to_undirected=True)
     
     # control node size by degree
     #degrees = pyg.utils.degree(PS.edge_index[0]).detach().numpy()
@@ -138,10 +140,10 @@ def drawPSNetwork(PS:pyg.data.Data, **kwargs):
     #min_d = np.min(degrees)
     #node_size = 2*((1000/(1+np.exp( -((degrees-min_d)/(max_d-min_d)-0.6)*0.5 ))) + 10).astype(np.int64)
     
-    named_positions = getattr(PS, kwargs.get('pos_name', 'node_polar_positions')).detach().numpy()
-    pos = dict(zip(range(PS.num_nodes), np.flip(named_positions, axis=1)))
+    named_positions = getattr(PS_c, kwargs.get('pos_name', 'node_polar_positions')).detach().numpy()
+    pos = dict(zip(range(PS_c.num_nodes), np.flip(named_positions, axis=1)))
 
-    if hasattr(PS, 'node_polar_positions'): node_color = PS.node_polar_positions[:,1].detach().numpy()
+    if hasattr(PS_c, 'node_polar_positions'): node_color = PS.node_polar_positions[:,1].detach().numpy()
     else: node_color = 'cornflowerblue'
 
     nx.draw(PS_nx, ax=ax, pos=pos, node_color=node_color, cmap=plt.cm.rainbow,
