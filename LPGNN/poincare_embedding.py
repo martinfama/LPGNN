@@ -107,15 +107,18 @@ def poincare_embedding(data:pyg.data.Data, DIMENSIONS=2, epochs=100, init_pos=No
         neg_nodes = th.arange(data.num_nodes).float()
         weight = th.ones_like(neg_nodes)
         weight[pos_edges[0]] = 0
-        neg_nodes = neg_nodes[th.multinomial(weight, pos_edges.shape[1], replacement=False)].long()
-        batch_X[:,2] = neg_nodes.T
-        
-        optimizer.zero_grad()
-        preds = model(batch_X)
+        try:
+            neg_nodes = neg_nodes[th.multinomial(weight, pos_edges.shape[1], replacement=False)].long()
+            batch_X[:,2] = neg_nodes.T
+            
+            optimizer.zero_grad()
+            preds = model(batch_X)
 
-        loss = loss_func(preds.neg(), batch_y)
-        loss.backward()
-        optimizer.step(lr=lr)
+            loss = loss_func(preds.neg(), batch_y)
+            loss.backward()
+            optimizer.step(lr=lr)
+        except:
+            pass
 
     data_Poincare = data.clone()
     data_Poincare.PoincareEmbedding_node_positions = model.embedding.weight

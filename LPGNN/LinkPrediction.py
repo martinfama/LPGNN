@@ -1,3 +1,4 @@
+from cgi import test
 import os
 
 import numpy as np
@@ -124,18 +125,22 @@ def precision_recall_score_file(data:pyg.data.Data, position_name:str, filename:
     
     N = data.num_nodes
     if not skip_file_prep:
-        print('Test mask')
+        print('Generating test mask...')
         test_mask = th.zeros( N*(N-1)//2 )
         def d2_index_to_d1(i, j, N):
             """ Convert a 2D index to a 1D index, considering the upper triangular matrix (main diagonal not included). """
-            return i*N + j - (i+1)*(i+2)/2
+            # convert a 2d index to a 1d index, considering the upper triangular matrix (main diagonal not included)
+            return i*N - th.div(i*(i+1), 2, rounding_mode='floor') + j - i - 1
+            #return i*N + j - (i+1)*(i+2)/2
         # Set the test mask, which is passed to `hyperbolic_distance_list_to_file` to save if edge exists alongside the distance
-        test_mask[d2_index_to_d1(data.test_pos_edge_label_index[0], data.test_pos_edge_label_index[1], N).type(th.long)] = 1
-        print('Done')
+        test_mask_idx = d2_index_to_d1(data.test_pos_edge_label_index[0], data.test_pos_edge_label_index[1], N).type(th.long)
+        print(test_mask_idx.shape, test_mask_idx.unique().shape)
+        test_mask[test_mask_idx] = 1
+        print("Total test mask: ", test_mask.sum(), " . Total test edges: ", total_test_edges)
         # save the predictions to a file, and sort it
-        print('Hyperbolic')
+        print('Generating hyperbolic distances and saving to file ', filename)
         hyperbolic_distance_list_to_file(getattr(data, position_name), chunk_size=chunk_size, filename=filename, extra_info_tensor=test_mask)
-        print('Done')
+        print('Sorting file...')
         sort_distance_file(filename, sort_dir='asc')
 
     tp = 0
@@ -145,6 +150,7 @@ def precision_recall_score_file(data:pyg.data.Data, position_name:str, filename:
     R_list = []
     P_list = []
 
+    print('Reading file and generating precision-recall curve...')
     # read the file in chunks
     index = 0
     for chunk in pd.read_csv(filename+'_sorted', header=None, chunksize=step_size, iterator=True):

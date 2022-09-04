@@ -57,7 +57,6 @@ def generateLaBNE(data:pyg.data.Data, edge_index='edge_index', only_coordinates=
     x, y = th.Tensor(eigenvectors[1].real), th.Tensor(eigenvectors[2].real)
     r = th.zeros(N)
     theta = th.atan2(y, x)
-    print(r.shape, theta.shape)
     #theta = (theta + 2*th.pi) % (2*th.pi)
 
     degrees = pyg.utils.degree(data.edge_index[0])
@@ -70,10 +69,8 @@ def generateLaBNE(data:pyg.data.Data, edge_index='edge_index', only_coordinates=
         r_t = np.log(t+1)
         r[degrees.indices[t]] = 2*beta*r_t + 2*(1-beta)*np.log(N)
     # normalize r to normalize_radius
-    print(r.shape, theta.shape)
     if type(normalize_radius) == float:
         r = r * normalize_radius / r.max()
-    print(r.shape, theta.shape)
     
     if only_coordinates:
         return x, y, r, theta

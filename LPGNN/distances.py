@@ -29,7 +29,7 @@ def hyperbolic_distance(positions:th.Tensor, idx:th.Tensor):
     d = th.arccosh(th.cosh(positions[idx[0]][:,0])*th.cosh(positions[idx[1]][:,0]) - th.sinh(positions[idx[0]][:,0])*th.sinh(positions[idx[1]][:,0])*th.cos(angular_distance))
     return d
 
-def hyperbolic_distance_list_to_file(positions:th.Tensor, chunk_size:int, filename:str, extra_info_tensor:Optional[th.Tensor] = None):
+def hyperbolic_distance_list_to_file(positions:th.Tensor, chunk_size:int, filename:str, extra_info_tensor:Optional[th.Tensor] = None, skip_index:Optional[th.Tensor] = None):
     """ Calculates _all_ hyperbolic distances by comparing all positions. Since the memory overhead
         can become huge for moderately large graphs (more than 10.000 nodes), we save these values to
         a file in chunks. The save format is:
@@ -48,7 +48,6 @@ def hyperbolic_distance_list_to_file(positions:th.Tensor, chunk_size:int, filena
     # Get the indices of node pairs corresponding to the upper triangle of the distance matrix,
     # since the distance matrix is symmetric. We omit the diagonal by setting offset to 1.
     idx = th.triu_indices(*(N, N), offset=1)
-    print(idx.shape)
     # iterate over the indices in chunks of chunk_size.
     for index in range(0, idx.shape[1]-chunk_size, chunk_size):
         idx_t = idx[:,index:index+chunk_size]

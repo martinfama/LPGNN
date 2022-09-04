@@ -92,17 +92,20 @@ def train_test_split(data, test_ratio, val_ratio, neg_samples=False):
                                 split_labels=True)
     train_data, val_data, test_data = RLS(data_c)
     data_c.train_pos_edge_label = train_data.pos_edge_label
-    data_c.train_pos_edge_label_index = train_data.pos_edge_label_index
-    data_c.train_neg_edge_label = train_data.neg_edge_label
-    data_c.train_neg_edge_label_index = train_data.neg_edge_label_index
+    data_c.train_pos_edge_label_index = pyg.utils.to_undirected(train_data.pos_edge_label_index)
+    if neg_samples:
+        data_c.train_neg_edge_label = train_data.neg_edge_label
+        data_c.train_neg_edge_label_index = pyg.utils.to_undirected(train_data.neg_edge_label_index)
     if val_ratio > 0:
         data_c.val_pos_edge_label = val_data.pos_edge_label
-        data_c.val_pos_edge_label_index = val_data.pos_edge_label_index
-        data_c.val_neg_edge_label = val_data.neg_edge_label
-        data_c.val_neg_edge_label_index = val_data.neg_edge_label_index
+        data_c.val_pos_edge_label_index = pyg.utils.to_undirected(val_data.pos_edge_label_index)
+        if neg_samples:
+            data_c.val_neg_edge_label = val_data.neg_edge_label
+            data_c.val_neg_edge_label_index = pyg.utils.to_undirected(val_data.neg_edge_label_index)
     if test_ratio > 0:
         data_c.test_pos_edge_label = test_data.pos_edge_label
         data_c.test_pos_edge_label_index = test_data.pos_edge_label_index
-        data_c.test_neg_edge_label = test_data.neg_edge_label
-        data_c.test_neg_edge_label_index = test_data.neg_edge_label_index
+        if neg_samples:
+            data_c.test_neg_edge_label = test_data.neg_edge_label
+            data_c.test_neg_edge_label_index = test_data.neg_edge_label_index
     return data_c
