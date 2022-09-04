@@ -7,10 +7,12 @@ from gensim.models.poincare import PoincareModel
 from .embedding import *
 
 class Model(th.nn.Module):
-    def __init__(self, dim, size, init_weights=1e-3, epsilon=1e-7):
+    def __init__(self, dim, size, init_weights=1e-3, init_pos=None, epsilon=1e-7):
         super().__init__()
         self.embedding = th.nn.Embedding(size, dim, sparse=False)
         self.embedding.weight.data.uniform_(-init_weights, init_weights)
+        if init_pos is not None:
+            self.embedding.weight.data = init_pos
         self.epsilon = epsilon
 
     def dist(self, u, v):
@@ -70,54 +72,55 @@ class RiemannianSGD(th.optim.Optimizer):
 
                 p.data.copy_(expm(p.data, d_p))
 
-def poincare_embedding(data:pyg.data.Data, NEG_SAMPLES=2, DIMENSIONS=2, epochs=100):
+def poincare_embedding(data:pyg.data.Data, DIMENSIONS=2, epochs=100, init_pos=None):
 
     th.set_default_dtype(th.float64)
     degrees = pyg.utils.degree(data.edge_index[0], dtype=th.float64)
     degrees = degrees / degrees.sum()
-    cat_dist = th.distributions.Categorical(degrees)
-    unif_dist = th.distributions.Categorical(probs=th.ones(data.num_nodes,) / data.num_nodes)
-    model = Model(dim=DIMENSIONS, size=data.num_nodes)
+    # cat_dist = th.distributions.Categorical(degrees)
+    # unif_dist = th.distributions.Categorical(probs=th.ones(data.num_nodes,) / data.num_nodes)
+    model = Model(dim=DIMENSIONS, size=data.num_nodes, init_pos=init_pos)
     optimizer = RiemannianSGD(model.parameters())
 
     loss_func = th.nn.CrossEntropyLoss()
-    batch_X = th.zeros(10, NEG_SAMPLES + 2, dtype=th.long)
-    batch_y = th.zeros(10, dtype=th.long)
 
     lr = 0.3
-    sampler = unif_dist
     neighbor_sampler = pyg.loader.NeighborSampler(data.edge_index, sizes=[-1])
     epoch = 0
     while True:
-        print(epoch)
         if epoch == epochs:
             break
-        if epoch < 20:
+        if epoch < 0:
             lr = 0.003
-            sampler = cat_dist
         else:
-            lr = 0.3
-            sampler = unif_dist
+            lr = 0.03
         epoch += 1
-        perm = th.randperm(data.edge_index.shape[1])
-        dataset_rnd = data.edge_index[:, perm]
-        #for i in tqdm(range(0, data.num_nodes - data.num_nodes % 10, 10)):
-        for i in range(0, data.num_nodes - data.num_nodes % 10, 10):
-            batch_X[:,:2] = dataset_rnd[:, i : i + 10].T
-            for j in range(10):
-                a = set(sampler.sample([2 * NEG_SAMPLES]).numpy())
-                negatives = list(a - (set(neighbor_sampler.sample(th.Tensor([batch_X[j, 0]]).reshape(-1,1).type(th.long)[0])) | set(neighbor_sampler.sample(th.Tensor([batch_X[j, 1]]).reshape(-1,1).type(th.long)[0]))))
-                batch_X[j, 2 : len(negatives)+2] = th.LongTensor(negatives[:NEG_SAMPLES])
+        
+        #for random_node in np.arange(data.num_nodes):
+        random_node = np.random.randint(0, data.num_nodes)
+        node_neighbors_e_id = neighbor_sampler.sample([random_node])[2][1]
+        pos_edges = data.edge_index[:, node_neighbors_e_id]
+        batch_X = th.zeros(pos_edges.shape[1], 3, dtype=th.long)
+        batch_y = th.zeros(pos_edges.shape[1], dtype=th.long)
+        batch_X[:,:2] = th.fliplr(pos_edges.T)
+        
+        neg_nodes = th.arange(data.num_nodes).float()
+        weight = th.ones_like(neg_nodes)
+        weight[pos_edges[0]] = 0
+        neg_nodes = neg_nodes[th.multinomial(weight, pos_edges.shape[1], replacement=False)].long()
+        batch_X[:,2] = neg_nodes.T
+        
+        optimizer.zero_grad()
+        preds = model(batch_X)
 
-            optimizer.zero_grad()
-            preds = model(batch_X)
+        loss = loss_func(preds.neg(), batch_y)
+        loss.backward()
+        optimizer.step(lr=lr)
 
-            loss = loss_func(preds.neg(), batch_y)
-            loss.backward()
-            optimizer.step(lr=lr)
-    
     data_Poincare = data.clone()
     data_Poincare.PoincareEmbedding_node_positions = model.embedding.weight
+    x, y = data_Poincare.PoincareEmbedding_node_positions[:,0], data_Poincare.PoincareEmbedding_node_positions[:,1]
+    data_Poincare.PoincareEmbedding_node_polar_positions = th.stack([th.sqrt(x**2 + y**2), th.atan2(y, x)], dim=1)
     return data_Poincare
 
 # @embedding
