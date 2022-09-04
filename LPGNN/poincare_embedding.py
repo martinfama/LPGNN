@@ -72,10 +72,11 @@ class RiemannianSGD(th.optim.Optimizer):
 
                 p.data.copy_(expm(p.data, d_p))
 
-def poincare_embedding(data:pyg.data.Data, DIMENSIONS=2, epochs=100, init_pos=None):
+def poincare_embedding(data:pyg.data.Data, edge_index='edge_index', DIMENSIONS=2, epochs=100, init_pos=None):
 
     th.set_default_dtype(th.float64)
-    degrees = pyg.utils.degree(data.edge_index[0], dtype=th.float64)
+    edge_index = getattr(data, edge_index)
+    degrees = pyg.utils.degree(edge_index[0], dtype=th.float64)
     degrees = degrees / degrees.sum()
     # cat_dist = th.distributions.Categorical(degrees)
     # unif_dist = th.distributions.Categorical(probs=th.ones(data.num_nodes,) / data.num_nodes)
@@ -85,7 +86,7 @@ def poincare_embedding(data:pyg.data.Data, DIMENSIONS=2, epochs=100, init_pos=No
     loss_func = th.nn.CrossEntropyLoss()
 
     lr = 0.3
-    neighbor_sampler = pyg.loader.NeighborSampler(data.edge_index, sizes=[-1])
+    neighbor_sampler = pyg.loader.NeighborSampler(edge_index, sizes=[-1])
     epoch = 0
     while True:
         if epoch == epochs:
@@ -99,7 +100,7 @@ def poincare_embedding(data:pyg.data.Data, DIMENSIONS=2, epochs=100, init_pos=No
         #for random_node in np.arange(data.num_nodes):
         random_node = np.random.randint(0, data.num_nodes)
         node_neighbors_e_id = neighbor_sampler.sample([random_node])[2][1]
-        pos_edges = data.edge_index[:, node_neighbors_e_id]
+        pos_edges = edge_index[:, node_neighbors_e_id]
         batch_X = th.zeros(pos_edges.shape[1], 3, dtype=th.long)
         batch_y = th.zeros(pos_edges.shape[1], dtype=th.long)
         batch_X[:,:2] = th.fliplr(pos_edges.T)

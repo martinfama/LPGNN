@@ -102,6 +102,11 @@ def generatePSNetwork(N:int, avg_k:int, gamma:int, T:int, seed=47, **kwargs):
         # normalize radius to 1
         data.node_polar_positions[:,0] /= data.node_polar_positions[:,0].max()
 
+    # generate x,y positions named data.node_positions
+    data.node_positions = th.zeros(size=(data.num_nodes,2))
+    data.node_positions[:,0] = data.node_polar_positions[:,0] * th.cos(data.node_polar_positions[:,1])
+    data.node_positions[:,1] = data.node_polar_positions[:,0] * th.sin(data.node_polar_positions[:,1])
+
     return data
 
 def drawPSNetwork(PS:pyg.data.Data, **kwargs):

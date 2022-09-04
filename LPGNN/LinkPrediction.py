@@ -134,7 +134,6 @@ def precision_recall_score_file(data:pyg.data.Data, position_name:str, filename:
             #return i*N + j - (i+1)*(i+2)/2
         # Set the test mask, which is passed to `hyperbolic_distance_list_to_file` to save if edge exists alongside the distance
         test_mask_idx = d2_index_to_d1(data.test_pos_edge_label_index[0], data.test_pos_edge_label_index[1], N).type(th.long)
-        print(test_mask_idx.shape, test_mask_idx.unique().shape)
         test_mask[test_mask_idx] = 1
         print("Total test mask: ", test_mask.sum(), " . Total test edges: ", total_test_edges)
         # save the predictions to a file, and sort it
