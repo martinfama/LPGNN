@@ -7,6 +7,7 @@ from gensim.models.poincare import PoincareModel
 from .embedding import *
 
 class Model(th.nn.Module):
+    """ Incorporates the Poincare embedding into a PyTorch model. """
     def __init__(self, dim, size, init_weights=1e-3, init_pos=None, epsilon=1e-7):
         super().__init__()
         self.embedding = th.nn.Embedding(size, dim, sparse=False)
@@ -16,6 +17,7 @@ class Model(th.nn.Module):
         self.epsilon = epsilon
 
     def dist(self, u, v):
+        """ Compute the Poincare distance between two vectors. """
         sqdist = th.sum((u - v) ** 2, dim=-1)
         squnorm = th.sum(u ** 2, dim=-1)
         sqvnorm = th.sum(v ** 2, dim=-1)
@@ -72,49 +74,71 @@ class RiemannianSGD(th.optim.Optimizer):
 
                 p.data.copy_(expm(p.data, d_p))
 
-def poincare_embedding(data:pyg.data.Data, edge_index='edge_index', DIMENSIONS=2, epochs=100, init_pos=None):
+def poincare_embedding(data:pyg.data.Data, edge_index='edge_index', DIMENSIONS=2, epochs=100, lr = 0.003, init_pos=None):
+    """ Embed a graph using the Poincare embedding.
+
+    Args:
+        data (pyg.data.Data): Graph to embed.
+        edge_index (str, optional): Name of edge_index to use from data, for example can be 'train_pos_edge_label_index'. Defaults to 'edge_index', i.e. full graph.
+        DIMENSIONS (int, optional): Dimensions to embed to. Defaults to 2.
+        epochs (int, optional): Number of epochs to run. A single epoch get a single node and updates according to neighbors and negative samples. Defaults to 100.
+        init_pos (th.Tensor, optional): Initial position of the embedding. Defaults to None, which in turn initializes randomly.
+
+    Returns:
+        pyg.data.Data: A cloned version of data with the embedding added, named 'PoincareEmbedding_node_positions' and 'PoincareEmbedding_node_polar_positions'.
+    """
 
     th.set_default_dtype(th.float64)
+    # get the edge index which we want to use
     edge_index = getattr(data, edge_index)
-    degrees = pyg.utils.degree(edge_index[0], dtype=th.float64)
-    degrees = degrees / degrees.sum()
+    # degrees = pyg.utils.degree(edge_index[0], dtype=th.float64)
+    # degrees = degrees / degrees.sum()
     # cat_dist = th.distributions.Categorical(degrees)
     # unif_dist = th.distributions.Categorical(probs=th.ones(data.num_nodes,) / data.num_nodes)
+    
+    # create the model
     model = Model(dim=DIMENSIONS, size=data.num_nodes, init_pos=init_pos)
+    # for optimizer, we use the Riemannian SGD
     optimizer = RiemannianSGD(model.parameters())
 
+    # a simple CrossEntropyLoss is used
     loss_func = th.nn.CrossEntropyLoss()
 
-    lr = 0.3
+    # pyg.loader.NeighborSampler is used to sample neighbors of nodes
     neighbor_sampler = pyg.loader.NeighborSampler(edge_index, sizes=[-1])
-    epoch = 0
-    while True:
-        if epoch == epochs:
-            break
-        if epoch < 0:
-            lr = 0.003
-        else:
-            lr = 0.03
-        epoch += 1
+    
+    for epoch in tqdm(range(epochs)):
         
         #for random_node in np.arange(data.num_nodes):
+        # get a random node
         random_node = np.random.randint(0, data.num_nodes)
+        # get the neighbors of the node
         node_neighbors_e_id = neighbor_sampler.sample([random_node])[2][1]
         pos_edges = edge_index[:, node_neighbors_e_id]
+        # batch_X and batch_y are used to store the positive and negative samples
+        # by setting batch_X shape to (pos_edges.shape[1], 3), we are implying that
+        # for every positive sample, we have 1 negative sample. This is because one of the 
+        # columns of batch_X is the node itself, and the other two are the positive and negative samples.
         batch_X = th.zeros(pos_edges.shape[1], 3, dtype=th.long)
         batch_y = th.zeros(pos_edges.shape[1], dtype=th.long)
+        # set the first column to be the random node and the second column to be the neighbors
         batch_X[:,:2] = th.fliplr(pos_edges.T)
         
+        # to get negative samples, we randomly sample from the uniform distribution of all nodes except the neighbors
         neg_nodes = th.arange(data.num_nodes).float()
         weight = th.ones_like(neg_nodes)
-        weight[pos_edges[0]] = 0
+        weight[pos_edges[0]] = 0 #this excludes the neighbors from the negative samples
+        
+        # TODO using a try except block for now, since sometimes the negative sampling fails
         try:
+            # get pos_edges.shape[1] number of negative samples
             neg_nodes = neg_nodes[th.multinomial(weight, pos_edges.shape[1], replacement=False)].long()
+            # set the third column to be the negative samples
             batch_X[:,2] = neg_nodes.T
             
+            # apply update step to the model
             optimizer.zero_grad()
             preds = model(batch_X)
-
             loss = loss_func(preds.neg(), batch_y)
             loss.backward()
             optimizer.step(lr=lr)

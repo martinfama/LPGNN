@@ -7,6 +7,16 @@ import torch_geometric as pyg
 # has a consistent interface, and you can select the metrics you want to use by name
 
 def CN(data:pyg.data.Data, u:int, v:int, **kwargs):
+    """ Get number of common neighbors between nodes u and v in data.
+
+    Args:
+        data (pyg.data.Data): Graph to analyze.
+        u (int): Node u
+        v (int): Node v
+
+    Returns:
+        int: N° of common neighbors between u and v.
+    """
     neighbor_sampler = pyg.loader.NeighborSampler(data.edge_index, sizes=[-1])
     n_u = neighbor_sampler.sample([u])[1][1:]
     n_v = neighbor_sampler.sample([v])[1][1:]
