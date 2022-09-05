@@ -47,12 +47,16 @@ def mobius_add(x: th.Tensor, y: th.Tensor):
 
     return num / denom.clamp_min(1e-15)
 
+# approximates the exponential map
 @th.jit.script
-def expm(p: th.Tensor, u: th.Tensor):
+def approx_expm(p: th.Tensor, u: th.Tensor):
     return p + u
-    # for exact exponential mapping
-    #norm = th.sqrt(th.sum(u ** 2, dim=-1, keepdim=True))
-    #return mobius_add(p, th.tanh(0.5 * lambda_x(p) * norm) * u / norm.clamp_min(1e-15))
+    
+# for exact exponential mapping
+@th.jit.script
+def exact_expm(p: th.Tensor, u: th.Tensor):
+    norm = th.sqrt(th.sum(u ** 2, dim=-1, keepdim=True))
+    return mobius_add(p, th.tanh(0.5 * lambda_x(p) * norm) * u / norm.clamp_min(1e-15))
 
 @th.jit.script
 def grad(p: th.Tensor):
@@ -63,7 +67,7 @@ class RiemannianSGD(th.optim.Optimizer):
     def __init__(self, params):
         super(RiemannianSGD, self).__init__(params, {})
 
-    def step(self, lr=0.3):
+    def step(self, lr=0.3, expm='approx'):
         for group in self.param_groups:
             for p in group['params']:
                 if p.grad is None:
@@ -71,10 +75,13 @@ class RiemannianSGD(th.optim.Optimizer):
 
                 d_p = grad(p)
                 d_p.mul_(-lr)
+                
+                if expm == 'approx':
+                    p.data.copy_(approx_expm(p.data, d_p))
+                elif expm == 'exact':
+                    p.data.copy_(exact_expm(p.data, d_p))
 
-                p.data.copy_(expm(p.data, d_p))
-
-def poincare_embedding(data:pyg.data.Data, edge_index='edge_index', DIMENSIONS=2, epochs=100, lr = 0.003, init_pos=None):
+def poincare_embedding(data:pyg.data.Data, edge_index='edge_index', DIMENSIONS=2, epochs=100, lr = 0.003, init_pos=None, expm='approx'):
     """ Embed a graph using the Poincare embedding.
 
     Args:
@@ -83,6 +90,7 @@ def poincare_embedding(data:pyg.data.Data, edge_index='edge_index', DIMENSIONS=2
         DIMENSIONS (int, optional): Dimensions to embed to. Defaults to 2.
         epochs (int, optional): Number of epochs to run. A single epoch get a single node and updates according to neighbors and negative samples. Defaults to 100.
         init_pos (th.Tensor, optional): Initial position of the embedding. Defaults to None, which in turn initializes randomly.
+        expm (str, optional): Exponential mapping to use. Defaults to 'approx', which is faster but less accurate. 'exact' is slower but more accurate.
 
     Returns:
         pyg.data.Data: A cloned version of data with the embedding added, named 'PoincareEmbedding_node_positions' and 'PoincareEmbedding_node_polar_positions'.
@@ -119,7 +127,7 @@ def poincare_embedding(data:pyg.data.Data, edge_index='edge_index', DIMENSIONS=2
         # by setting batch_X shape to (pos_edges.shape[1], 3), we are implying that
         # for every positive sample, we have 1 negative sample. This is because one of the 
         # columns of batch_X is the node itself, and the other two are the positive and negative samples.
-        batch_X = th.zeros(pos_edges.shape[1], 3, dtype=th.long)
+        batch_X = th.zeros(pos_edges.shape[1], 4, dtype=th.long)
         batch_y = th.zeros(pos_edges.shape[1], dtype=th.long)
         # set the first column to be the random node and the second column to be the neighbors
         batch_X[:,:2] = th.fliplr(pos_edges.T)
@@ -135,13 +143,17 @@ def poincare_embedding(data:pyg.data.Data, edge_index='edge_index', DIMENSIONS=2
             neg_nodes = neg_nodes[th.multinomial(weight, pos_edges.shape[1], replacement=False)].long()
             # set the third column to be the negative samples
             batch_X[:,2] = neg_nodes.T
+            # get pos_edges.shape[1] number of negative samples
+            neg_nodes = neg_nodes[th.multinomial(weight, pos_edges.shape[1], replacement=False)].long()
+            # set the fourth column to be the negative samples
+            batch_X[:,3] = neg_nodes.T
             
             # apply update step to the model
             optimizer.zero_grad()
             preds = model(batch_X)
             loss = loss_func(preds.neg(), batch_y)
             loss.backward()
-            optimizer.step(lr=lr)
+            optimizer.step(lr=lr, expm=expm)
         except:
             pass
 
