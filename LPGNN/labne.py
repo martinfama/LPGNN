@@ -58,7 +58,7 @@ def generateLaBNE(data:pyg.data.Data, edge_index='edge_index', only_coordinates=
     theta = th.atan2(y, x)
     #theta = (theta + 2*th.pi) % (2*th.pi)
 
-    r = radial_ordering(data)
+    r = radial_ordering(data, edge_index)
     # normalize r to normalize_radius
     if type(normalize_radius) == float:
         r = r * normalize_radius / r.max()
@@ -72,12 +72,12 @@ def generateLaBNE(data:pyg.data.Data, edge_index='edge_index', only_coordinates=
     data_LaBNE.LaBNE_node_positions = th.stack((r*th.cos(theta),r*th.sin(theta))).T
     return data_LaBNE
 
-def radial_ordering(data:pyg.data.Data):
+def radial_ordering(data:pyg.data.Data, edge_index='edge_index'):
     """ Given a graph, returns the radial ordering of the nodes as described in [1]. This is the r coordinate in the LaBNE embedding. """
 
     N = data.num_nodes
     r = th.zeros(N)
-    degrees = pyg.utils.degree(data.edge_index[0])
+    degrees = pyg.utils.degree(getattr(data, edge_index)[0])
     # sort degrees for radial positioning
     degrees = degrees.sort(descending=True)
     gamma = infer_gamma(data).power_law.alpha
