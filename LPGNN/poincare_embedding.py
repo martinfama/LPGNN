@@ -47,7 +47,8 @@ def mobius_add(x: th.Tensor, y: th.Tensor):
 
     return num / denom.clamp_min(1e-15)
 
-# approximates the exponential map
+# approximates the exponential map (the retraction)
+# this is what the authors in [1] use
 @th.jit.script
 def approx_expm(p: th.Tensor, u: th.Tensor):
     return p + u
@@ -58,11 +59,13 @@ def exact_expm(p: th.Tensor, u: th.Tensor):
     norm = th.sqrt(th.sum(u ** 2, dim=-1, keepdim=True))
     return mobius_add(p, th.tanh(0.5 * lambda_x(p) * norm) * u / norm.clamp_min(1e-15))
 
+# the Riemannian gradient on the Poincaré ball 
 @th.jit.script
 def grad(p: th.Tensor):
     p_sqnorm = th.sum(p.data ** 2, dim=-1, keepdim=True)
     return p.grad.data * ((1 - p_sqnorm) ** 2 / 4).expand_as(p.grad.data)
 
+# Riemannian stochastic gradient descent
 class RiemannianSGD(th.optim.Optimizer):
     def __init__(self, params):
         super(RiemannianSGD, self).__init__(params, {})
@@ -127,7 +130,7 @@ def poincare_embedding(data:pyg.data.Data, edge_index='edge_index', DIMENSIONS=2
         # by setting batch_X shape to (pos_edges.shape[1], 3), we are implying that
         # for every positive sample, we have 1 negative sample. This is because one of the 
         # columns of batch_X is the node itself, and the other two are the positive and negative samples.
-        batch_X = th.zeros(pos_edges.shape[1], 4, dtype=th.long)
+        batch_X = th.zeros(pos_edges.shape[1], 3, dtype=th.long)
         batch_y = th.zeros(pos_edges.shape[1], dtype=th.long)
         # set the first column to be the random node and the second column to be the neighbors
         batch_X[:,:2] = th.fliplr(pos_edges.T)
@@ -143,10 +146,6 @@ def poincare_embedding(data:pyg.data.Data, edge_index='edge_index', DIMENSIONS=2
             neg_nodes = neg_nodes[th.multinomial(weight, pos_edges.shape[1], replacement=False)].long()
             # set the third column to be the negative samples
             batch_X[:,2] = neg_nodes.T
-            # get pos_edges.shape[1] number of negative samples
-            neg_nodes = neg_nodes[th.multinomial(weight, pos_edges.shape[1], replacement=False)].long()
-            # set the fourth column to be the negative samples
-            batch_X[:,3] = neg_nodes.T
             
             # apply update step to the model
             optimizer.zero_grad()

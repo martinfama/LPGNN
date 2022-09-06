@@ -143,10 +143,10 @@ def drawPSNetwork(PS:pyg.data.Data, **kwargs):
     named_positions = getattr(PS, kwargs.get('pos_name', 'node_polar_positions')).detach().numpy()
     pos = dict(zip(range(PS.num_nodes), np.flip(named_positions, axis=1)))
 
-    if hasattr(PS, 'node_polar_positions'): node_color = PS.node_polar_positions[:,1].detach().numpy()
+    if hasattr(PS, 'node_polar_positions'): node_color = named_positions[:,1]
     else: node_color = 'cornflowerblue'
 
-    nx.draw(PS_nx, ax=ax, pos=pos, node_color=node_color, cmap=plt.cm.rainbow,
+    nx.draw(PS_nx, ax=ax, pos=pos, node_color=node_color, cmap='rainbow',
                           node_size=kwargs.get('node_size', 50), width=0.2, with_labels=kwargs.get('with_labels', False))
 
     return fig, ax
