@@ -9,6 +9,53 @@ from typing import Optional
 import pandas as pd
 import torch as th
 
+def poincare_dist(u:th.Tensor, v:th.Tensor):
+    """ Compute the Poincare distance between two vectors. """
+    sqdist = th.sum((u - v) ** 2, dim=-1)
+    squnorm = th.sum(u ** 2, dim=-1)
+    sqvnorm = th.sum(v ** 2, dim=-1)
+    x = 1 + 2 * sqdist / ((1 - squnorm) * (1 - sqvnorm)) + 1e-5
+    z = th.sqrt(x ** 2 - 1)
+    return th.log(x + z)
+
+def to_spherical(u:th.Tensor):
+    """ Assumes a N-dimensional vector in cartesian coordinates (x_1, x_2, ..., x_n).
+    Returns a N-dimensional vector in spherical coordinates (r, theta_1, theta_2, ..., theta_n-1). """
+
+    reshape = False
+    if u.dim() == 1:
+        # reshape u
+        u = u.reshape(1,-1)
+        reshape = True
+    u_s = th.zeros_like(u)
+    u_s[:,0] = th.norm(u, dim=1)
+    for i in range(1, u_s.shape[1]-1):
+        # set hyperspherical coordinates
+        u_s[:,i] = th.acos(u[:,i-1] / th.norm(u[:,i-1:], dim=1))
+    # set polar coordinate
+    u_s[:,-1] = th.arccos(u[:,-2] / th.sqrt(u[:,-1]**2 + u[:,-2]**2))
+    u_s[:,-1][u[:,-1] < 0] = 2*th.pi - u_s[:,-1][u[:,-1] < 0]
+    u_s = th.nan_to_num_(u_s, nan=0)
+    if reshape: u_s = u_s.reshape(-1)
+    return u_s
+
+def to_cartesian(u:th.Tensor):
+    """ Assumes a N-dimensional vector in spherical coordinates (r, theta_1, theta_2, ..., theta_n-1).
+    Returns a N-dimensional vector in cartesian coordinates (x_1, x_2, ..., x_n). """
+
+    reshape = False
+    if u.dim() == 1:
+        # reshape u
+        u = u.reshape(1,-1)
+        reshape = True
+    u_c = th.zeros_like(u)
+    for i in range(u_c.shape[1]-1):
+        # set cartesian coordinates
+        u_c[:,i] = u[:,0] * th.prod(th.sin(u[:,1:i+1]), dim=1) * th.cos(u[:,i+1])
+    u_c[:,-1] = u[:,0] * th.prod(th.sin(u[:,1:]), dim=1)
+    if reshape: u_c = u_c.reshape(-1)
+    return u_c
+
 def hyperbolic_distances(positions:th.Tensor, pos_0:th.Tensor):
     angular_distance = th.min(2*th.pi-th.abs(positions[:,1]-pos_0[1]), th.abs(positions[:,1]-pos_0[1]))
     d = th.arccosh(th.cosh(positions[:,0])*th.cosh(pos_0[0]) - th.sinh(positions[:,0])*th.sinh(pos_0[0])*th.cos(angular_distance))
