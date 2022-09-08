@@ -9,14 +9,19 @@ from typing import Optional
 import pandas as pd
 import torch as th
 
-def poincare_dist(u:th.Tensor, v:th.Tensor):
+def poincare_dist(u:th.Tensor, v:th.Tensor, max_r=1):
     """ Compute the Poincare distance between two vectors. """
-    sqdist = th.sum((u - v) ** 2, dim=-1)
-    squnorm = th.sum(u ** 2, dim=-1)
-    sqvnorm = th.sum(v ** 2, dim=-1)
-    x = 1 + 2 * sqdist / ((1 - squnorm) * (1 - sqvnorm)) + 1e-5
-    z = th.sqrt(x ** 2 - 1)
-    return th.log(x + z)
+    # sqdist = th.sum((u - v) ** 2, dim=-1)
+    # squnorm = th.sum(u ** 2, dim=-1)
+    # sqvnorm = th.sum(v ** 2, dim=-1)
+    # x = 1 + 2 * sqdist / ((1 - squnorm) * (1 - sqvnorm)) + 1e-15
+    # z = th.sqrt(x ** 2 - 1)
+    # return th.log(x + z)
+    sqdist = max_r**2 * th.sum((u - v) ** 2, dim=-1)
+    squnorm = max_r**2 - th.sum(u ** 2, dim=-1)
+    sqvnorm = max_r**2 - th.sum(v ** 2, dim=-1)
+    
+    return th.arccosh(1 + 2 * sqdist / (squnorm * sqvnorm))
 
 def to_spherical(u:th.Tensor):
     """ Assumes a N-dimensional vector in cartesian coordinates (x_1, x_2, ..., x_n).

@@ -8,7 +8,7 @@ import networkx as nx
 
 from .distances import *
 
-def generatePSNetwork(N:int, avg_k:int, gamma:int, T:int, seed=47, **kwargs):
+def generatePSNetwork(N:int, avg_k:int, gamma:int, T:int, seed=47, dim=2, **kwargs):
     """Generates a network based on the Popularity-Similarity model [1]. This model assumes a 2-dimensional hyperbolic space in which the networks grow, giving the network room for two measures of node characteristics: \\
                 1) Popularity, which affects hierarchy in the network, indicated by radius. \\
                 2) Similarity, which affects arbitrary "likeness" between nodes, indicated by their angular distance.
@@ -40,13 +40,13 @@ def generatePSNetwork(N:int, avg_k:int, gamma:int, T:int, seed=47, **kwargs):
     data.gamma = gamma
     data.T = T
     data.seed = seed
-    # Initialize node positions as 2D torch tensor (r, theta). Both are zero
-    data.node_polar_positions = th.zeros(size=(data.num_nodes,2))
-    # Set node angular positions to random uniform distribution [0, 2π). We
-    # can do this now because it doesn't affect PS algorithm.
-    data.node_polar_positions[:,1] = th.rand(size=(data.num_nodes,))*2*th.pi
+    data.dim = dim
+    # Initialize node positions as 2D torch tensor (r, theta_1, theta_2, ..., theta_(dim-1)). Both are zero
+    data.node_polar_positions = th.zeros(size=(data.num_nodes,dim))
+    # Set node angular positions to random uniform distribution [0, 2π). We can do this now because it doesn't affect PS algorithm.
+    data.node_polar_positions[:,1:] = th.rand(size=(data.num_nodes,dim-1))*2*th.pi
     # We _can't_ set node radial positions now because with popularity fading,
-    # this coordinate changes as time progresses in the network generation.
+    # this coordinate changes as time progresses in the network generation, affecting new connections.
 
     # beta controls popularity fading
     beta = 1/(gamma-1)
@@ -77,10 +77,11 @@ def generatePSNetwork(N:int, avg_k:int, gamma:int, T:int, seed=47, **kwargs):
         elif beta < 1 and T == 0: R_t = 2*r_t - 2*np.log((2*(1 - np.exp(-0.5*(1 - beta)*2*r_t)))/(np.pi*m*(1 - beta))) #[1], Eq. 10
         else: R_t = 2*r_t - 2*np.log((2*T*(1 - np.exp(-0.5*(1 - beta)*2*r_t)))/(np.sin(T*np.pi)*m*(1 - beta)))         #[1], Eq. 26
         
-        #save all hyperbolic distances between new node and other nodes, and sort from shortes to longest
+        #save all hyperbolic distances between new node and other nodes, and sort from shortest to longest
         #this sort method returns a tensor with two sub-tensors: d.values and d.indices (with indices sorted by values)
-        d = hyperbolic_distances(data.node_polar_positions[:t-1], data.node_polar_positions[t]).sort()
-        
+        temp_cartesian = to_cartesian(data.node_polar_positions[:t+1])
+        print(R_t)
+        d = poincare_dist(temp_cartesian[:t], temp_cartesian[t], max_r=R_t).sort()
         #If T = 0, simply connect to the m hyperbolically closest nodes
         if T == 0:
             new_edges = th.stack([d.indices[:m], th.empty(m).fill_(t)])
@@ -91,6 +92,7 @@ def generatePSNetwork(N:int, avg_k:int, gamma:int, T:int, seed=47, **kwargs):
             # probability that the new node connects to the other nodes in the network
             p = 1 / (1 + th.exp((d.values - R_t)/(2*T)))
             p = th.nan_to_num(p, nan=0)
+            
             # get m nodes to connect to, sampled by the probabilities given by p.values
             selected_nodes = np.random.choice(d.indices.detach().numpy(), size=m, p=(p/th.sum(p)).detach().numpy(), replace=False)
             new_edges = th.stack([th.Tensor(selected_nodes), th.empty(m).fill_(t)])
@@ -103,9 +105,7 @@ def generatePSNetwork(N:int, avg_k:int, gamma:int, T:int, seed=47, **kwargs):
         data.node_polar_positions[:,0] /= data.node_polar_positions[:,0].max()
 
     # generate x,y positions named data.node_positions
-    data.node_positions = th.zeros(size=(data.num_nodes,2))
-    data.node_positions[:,0] = data.node_polar_positions[:,0] * th.cos(data.node_polar_positions[:,1])
-    data.node_positions[:,1] = data.node_polar_positions[:,0] * th.sin(data.node_polar_positions[:,1])
+    data.node_positions = to_cartesian(data.node_polar_positions)
 
     return data
 
