@@ -96,7 +96,6 @@ def hyperbolic_distance_list_to_file(positions:th.Tensor, chunk_size:int, filena
         filename (str): File to save to.
     """
     N = positions.shape[0]
-    
     # Get the indices of node pairs corresponding to the upper triangle of the distance matrix,
     # since the distance matrix is symmetric. We omit the diagonal by setting offset to 1.
     idx = th.triu_indices(*(N, N), offset=1)
@@ -104,6 +103,7 @@ def hyperbolic_distance_list_to_file(positions:th.Tensor, chunk_size:int, filena
     for index in range(0, idx.shape[1]-chunk_size, chunk_size):
         idx_t = idx[:,index:index+chunk_size]
         d = hyperbolic_distance(positions, idx_t)
+        #d = poincare_dist(positions[idx_t[0]], positions[idx_t[1]])
         d = th.nan_to_num(d, nan=th.inf)
         if extra_info_tensor is None: 
             d = pd.DataFrame(th.stack([*idx_t, d], dim=0).T.detach().numpy())
@@ -118,6 +118,7 @@ def hyperbolic_distance_list_to_file(positions:th.Tensor, chunk_size:int, filena
     # get what's leftover of idx.
     idx_t = idx[:,index+chunk_size:]
     d = hyperbolic_distance(positions, idx_t)
+    #d = poincare_dist(positions[idx_t[0]], positions[idx_t[1]])
     d = th.nan_to_num(d, nan=th.inf)
     if extra_info_tensor is None: 
         d = pd.DataFrame(th.stack([*idx_t, d], dim=0).T.detach().numpy())

@@ -84,7 +84,7 @@ class RiemannianSGD(th.optim.Optimizer):
                 elif expm == 'exact':
                     p.data.copy_(exact_expm(p.data, d_p))
 
-def poincare_embedding(data:pyg.data.Data, edge_index='edge_index', DIMENSIONS=2, epochs=100, lr = 0.003, init_pos=None, expm='approx'):
+def poincare_embedding(data:pyg.data.Data, edge_index='edge_index', DIMENSIONS=2, epochs=100, lr = 0.03, init_pos=None, expm='approx'):
     """ Embed a graph using the Poincare embedding.
 
     Args:
