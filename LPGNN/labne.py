@@ -67,8 +67,7 @@ def generateLaBNE(data:pyg.data.Data, edge_index='edge_index', only_coordinates=
     beta = 1/(gamma-1)
     for t in range(N):
         r_t = np.log(t+1)
-        r[degrees.indices[t]] = 2*beta*r_t + 2*(1-beta)*np.log(N)
-    
+        r[degrees.indices[t]] = 2*beta*r_t + 2*(1-beta)*np.log(N) 
     # normalize r to normalize_radius
     if type(normalize_radius) == float:
         r = r * normalize_radius / r.max()

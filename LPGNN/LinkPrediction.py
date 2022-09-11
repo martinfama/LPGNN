@@ -109,7 +109,7 @@ def sort_distance_file(filename, sort_dir='asc'):
     else: sort_dir = 'r'
     os.system(f"LC_ALL=C sort -t',' -gs{sort_dir}k4 {filename} -o {filename}_sorted")
 
-def precision_recall_score_file(data:pyg.data.Data, position_name:str, filename:str, chunk_size=10000, step_size=1, skip_file_prep=False):
+def precision_recall_score_file(data:pyg.data.Data, position_name:str, filename:str, chunk_size=10000, step_size=1, skip_file_prep=False, dist='poincare'):
     """ Generates a Precision-Recall curve, given a file of sorted scores.
 
     Args:
@@ -138,7 +138,7 @@ def precision_recall_score_file(data:pyg.data.Data, position_name:str, filename:
         print("Total test mask: ", test_mask.sum(), " . Total test edges: ", total_test_edges)
         # save the predictions to a file, and sort it
         print('Generating hyperbolic distances and saving to file ', filename)
-        hyperbolic_distance_list_to_file(getattr(data, position_name), chunk_size=chunk_size, filename=filename, extra_info_tensor=test_mask)
+        hyperbolic_distance_list_to_file(getattr(data, position_name), chunk_size=chunk_size, filename=filename, extra_info_tensor=test_mask, dist=dist)
         print('Sorting file...')
         sort_distance_file(filename, sort_dir='asc')
 

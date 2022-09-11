@@ -4,6 +4,8 @@ import torch as th
 import torch_geometric as pyg
 from gensim.models.poincare import PoincareModel
 
+from .distances import to_cartesian, to_spherical
+
 from .embedding import *
 
 class Model(th.nn.Module):
@@ -67,8 +69,12 @@ def grad(p: th.Tensor):
 
 # Riemannian stochastic gradient descent
 class RiemannianSGD(th.optim.Optimizer):
-    def __init__(self, params):
+    def __init__(self, params, expm='approx'):
         super(RiemannianSGD, self).__init__(params, {})
+        if expm == 'approx':
+            self.expm = approx_expm
+        elif expm == 'exact':
+            self.expm = exact_expm
 
     def step(self, lr=0.3, expm='approx'):
         for group in self.param_groups:
@@ -79,12 +85,9 @@ class RiemannianSGD(th.optim.Optimizer):
                 d_p = grad(p)
                 d_p.mul_(-lr)
                 
-                if expm == 'approx':
-                    p.data.copy_(approx_expm(p.data, d_p))
-                elif expm == 'exact':
-                    p.data.copy_(exact_expm(p.data, d_p))
+                p.data.copy_(self.expm(p.data, d_p))
 
-def poincare_embedding(data:pyg.data.Data, edge_index='edge_index', DIMENSIONS=2, epochs=100, lr = 0.03, init_pos=None, expm='approx'):
+def poincare_embedding(data:pyg.data.Data, edge_index='edge_index', epochs=100, lr = 0.03, init_pos=None, dim=2, expm='approx', pre_norm_radius=False, normalize_radius=False):
     """ Embed a graph using the Poincare embedding.
 
     Args:
@@ -93,7 +96,9 @@ def poincare_embedding(data:pyg.data.Data, edge_index='edge_index', DIMENSIONS=2
         DIMENSIONS (int, optional): Dimensions to embed to. Defaults to 2.
         epochs (int, optional): Number of epochs to run. A single epoch get a single node and updates according to neighbors and negative samples. Defaults to 100.
         init_pos (th.Tensor, optional): Initial position of the embedding. Defaults to None, which in turn initializes randomly.
+        dim (int, optional): Dimensions to embed to. Defaults to 2.
         expm (str, optional): Exponential mapping to use. Defaults to 'approx', which is faster but less accurate. 'exact' is slower but more accurate.
+        normalize_radius (bool, optional): Whether to normalize the radius of the embedding. Defaults to False. This lets you keep nodes from being placed at r=1, which is the boundary of the Poincare ball.
 
     Returns:
         pyg.data.Data: A cloned version of data with the embedding added, named 'PoincareEmbedding_node_positions' and 'PoincareEmbedding_node_polar_positions'.
@@ -107,10 +112,14 @@ def poincare_embedding(data:pyg.data.Data, edge_index='edge_index', DIMENSIONS=2
     # cat_dist = th.distributions.Categorical(degrees)
     # unif_dist = th.distributions.Categorical(probs=th.ones(data.num_nodes,) / data.num_nodes)
     
+    # pre-normalize the radius of init_pos (if given)
+    if pre_norm_radius and init_pos is not None:
+        init_pos = init_pos / th.norm(init_pos, dim=-1, keepdim=True) * pre_norm_radius
+
     # create the model
-    model = Model(dim=DIMENSIONS, size=data.num_nodes, init_pos=init_pos)
+    model = Model(size=data.num_nodes, init_pos=init_pos, dim=dim)
     # for optimizer, we use the Riemannian SGD
-    optimizer = RiemannianSGD(model.parameters())
+    optimizer = RiemannianSGD(model.parameters(), expm=expm)
 
     # a simple CrossEntropyLoss is used
     loss_func = th.nn.CrossEntropyLoss()
@@ -152,14 +161,17 @@ def poincare_embedding(data:pyg.data.Data, edge_index='edge_index', DIMENSIONS=2
             preds = model(batch_X)
             loss = loss_func(preds.neg(), batch_y)
             loss.backward()
-            optimizer.step(lr=lr, expm=expm)
+            optimizer.step(lr=lr)
         except:
             pass
 
     data_Poincare = data.clone()
-    data_Poincare.PoincareEmbedding_node_positions = model.embedding.weight
-    x, y = data_Poincare.PoincareEmbedding_node_positions[:,0], data_Poincare.PoincareEmbedding_node_positions[:,1]
-    data_Poincare.PoincareEmbedding_node_polar_positions = th.stack([th.sqrt(x**2 + y**2), th.atan2(y, x)], dim=1)
+    if normalize_radius:
+        data_Poincare.PoincareEmbedding_node_positions = model.embedding.weight / model.embedding.weight.norm(dim=1, keepdim=True) * normalize_radius
+    else:
+        data_Poincare.PoincareEmbedding_node_positions = model.embedding.weight
+    data_Poincare.PoincareEmbedding_node_polar_positions = to_spherical(data_Poincare.PoincareEmbedding_node_positions)
+
     return data_Poincare
 
 # @embedding

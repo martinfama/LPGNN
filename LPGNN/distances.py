@@ -9,20 +9,6 @@ from typing import Optional
 import pandas as pd
 import torch as th
 
-def poincare_dist(u:th.Tensor, v:th.Tensor, max_r=1):
-    """ Compute the Poincare distance between two vectors. """
-    # sqdist = th.sum((u - v) ** 2, dim=-1)
-    # squnorm = th.sum(u ** 2, dim=-1)
-    # sqvnorm = th.sum(v ** 2, dim=-1)
-    # x = 1 + 2 * sqdist / ((1 - squnorm) * (1 - sqvnorm)) + 1e-15
-    # z = th.sqrt(x ** 2 - 1)
-    # return th.log(x + z)
-    sqdist = max_r**2 * th.sum((u - v) ** 2, dim=-1)
-    squnorm = max_r**2 - th.sum(u ** 2, dim=-1)
-    sqvnorm = max_r**2 - th.sum(v ** 2, dim=-1)
-    
-    return th.arccosh(1 + 2 * sqdist / (squnorm * sqvnorm))
-
 def to_spherical(u:th.Tensor):
     """ Assumes a N-dimensional vector in cartesian coordinates (x_1, x_2, ..., x_n).
     Returns a N-dimensional vector in spherical coordinates (r, theta_1, theta_2, ..., theta_n-1). """
@@ -61,12 +47,7 @@ def to_cartesian(u:th.Tensor):
     if reshape: u_c = u_c.reshape(-1)
     return u_c
 
-def hyperbolic_distances(positions:th.Tensor, pos_0:th.Tensor):
-    angular_distance = th.min(2*th.pi-th.abs(positions[:,1]-pos_0[1]), th.abs(positions[:,1]-pos_0[1]))
-    d = th.arccosh(th.cosh(positions[:,0])*th.cosh(pos_0[0]) - th.sinh(positions[:,0])*th.sinh(pos_0[0])*th.cos(angular_distance))
-    return d
-
-def hyperbolic_distance(positions:th.Tensor, idx:th.Tensor):
+def hyperbolic_distance(u:th.Tensor, v:th.Tensor):
     """ Calculates hyperbolic distances between positions given as a list of [r, theta] values.
         Uses idx to indicate which positions to compare.
 
@@ -77,11 +58,32 @@ def hyperbolic_distance(positions:th.Tensor, idx:th.Tensor):
     Returns:
         th.Tensor: A 1D tensor of hyperbolic distances of length N.
     """
-    angular_distance = th.min(2*th.pi-th.abs(positions[idx[0]][:,1]-positions[idx[1]][:,1]), th.abs(positions[idx[0]][:,1]-positions[idx[1]][:,1]))
-    d = th.arccosh(th.cosh(positions[idx[0]][:,0])*th.cosh(positions[idx[1]][:,0]) - th.sinh(positions[idx[0]][:,0])*th.sinh(positions[idx[1]][:,0])*th.cos(angular_distance))
+
+    # get the angular distance by applying acos() to the dot product of the two vectors
+    r_u = th.norm(u, dim=1)
+    r_v = th.norm(v, dim=1)
+    dot = th.sum(u * v, dim=1)
+    angular_distance = th.acos(dot / (r_u * r_v))
+    #angular_distance = th.min(2*th.pi-th.abs(u[:,1]-v[:,1]), th.abs(u[:,1]-v[:,1]))
+
+    d = th.arccosh(th.cosh(r_u)*th.cosh(r_v) - th.sinh(r_u)*th.sinh(r_v)*th.cos(angular_distance))
     return d
 
-def hyperbolic_distance_list_to_file(positions:th.Tensor, chunk_size:int, filename:str, extra_info_tensor:Optional[th.Tensor] = None, skip_index:Optional[th.Tensor] = None):
+def poincare_distance(u:th.Tensor, v:th.Tensor, max_r=1):
+    """ Compute the Poincare distance between two vectors. """
+    sqdist = th.sum((u - v) ** 2, dim=-1) 
+    squnorm = th.sum(u ** 2, dim=-1)
+    sqvnorm = th.sum(v ** 2, dim=-1) 
+    x = 1 + 2 * sqdist / ((1 - squnorm) * (1 - sqvnorm)) + 1e-15
+    z = th.sqrt(x ** 2 - 1)
+    return th.log(x + z)
+    # sqdist = max_r**2 * th.sum((u - v) ** 2, dim=-1)
+    # squnorm = max_r**2 - th.sum(u ** 2, dim=-1)
+    # sqvnorm = max_r**2 - th.sum(v ** 2, dim=-1)
+    
+    # return th.arccosh(1 + 2 * sqdist / (squnorm * sqvnorm))
+
+def hyperbolic_distance_list_to_file(positions:th.Tensor, chunk_size:int, filename:str, extra_info_tensor:Optional[th.Tensor] = None, skip_index:Optional[th.Tensor] = None, dist='poincare'):
     """ Calculates _all_ hyperbolic distances by comparing all positions. Since the memory overhead
         can become huge for moderately large graphs (more than 10.000 nodes), we save these values to
         a file in chunks. The save format is:
@@ -94,38 +96,42 @@ def hyperbolic_distance_list_to_file(positions:th.Tensor, chunk_size:int, filena
         positions (th.Tensor): The list of positions given as [r,theta] values
         chunk_size (int): What length lists we should save in.
         filename (str): File to save to.
+        extra_info_tensor (th.Tensor, optional): A tensor of extra information to save to file. Defaults to None. Implemented to save the edge labels (i.e. 0 or 1).
+        skip_index (th.Tensor, optional): A tensor of indices to skip. Defaults to None.
+        dist (str, optional): The distance metric to use. Defaults to 'poincare'. Options are 'poincare' and 'hyp'.
     """
+
+    if dist == 'poincare': dist_func = poincare_distance
+    elif dist == 'hyp': dist_func = hyperbolic_distance
+
     N = positions.shape[0]
+    # change positions type to th.DoubleTensor
+    positions = positions.double()
     # Get the indices of node pairs corresponding to the upper triangle of the distance matrix,
     # since the distance matrix is symmetric. We omit the diagonal by setting offset to 1.
     idx = th.triu_indices(*(N, N), offset=1)
-    # iterate over the indices in chunks of chunk_size.
-    for index in range(0, idx.shape[1]-chunk_size, chunk_size):
-        idx_t = idx[:,index:index+chunk_size]
-        d = hyperbolic_distance(positions, idx_t)
-        #d = poincare_dist(positions[idx_t[0]], positions[idx_t[1]])
+    
+    # auxiliary function to save a chunk of distances to file. Takes as input the indices of the
+    # positions to compare. 
+    def _(rng):
+        idx_t = idx[:,rng]
+        d = dist_func(positions[idx_t[0]], positions[idx_t[1]])
         d = th.nan_to_num(d, nan=th.inf)
         if extra_info_tensor is None: 
             d = pd.DataFrame(th.stack([*idx_t, d], dim=0).T.detach().numpy())
             d[[2]] = d[[2]].astype(float).round(21)
         else: 
-            d = pd.DataFrame(th.stack([*idx_t, extra_info_tensor[index:index+chunk_size], d], dim=0).T.detach().numpy())
+            d = pd.DataFrame(th.stack([*idx_t, extra_info_tensor[rng], d], dim=0).T.detach().numpy())
             d[[2]] = d[[2]].astype(int)
             d[[3]] = d[[3]].astype(float).round(21)
 
         d[[0,1]] = d[[0,1]].astype(int)
         d.to_csv(filename, mode='a', header=False, index=False)
+    
+    # iterate over the indices in chunks of chunk_size.
+    for index in range(0, idx.shape[1]-chunk_size, chunk_size):
+        rng = range(index, index+chunk_size)
+        _(rng)
     # get what's leftover of idx.
-    idx_t = idx[:,index+chunk_size:]
-    d = hyperbolic_distance(positions, idx_t)
-    #d = poincare_dist(positions[idx_t[0]], positions[idx_t[1]])
-    d = th.nan_to_num(d, nan=th.inf)
-    if extra_info_tensor is None: 
-        d = pd.DataFrame(th.stack([*idx_t, d], dim=0).T.detach().numpy())
-        d[[2]] = d[[2]].astype(float).round(21)
-    else: 
-        d = pd.DataFrame(th.stack([*idx_t, extra_info_tensor[index+chunk_size:], d], dim=0).T.detach().numpy())
-        d[[2]] = d[[2]].astype(int)
-        d[[3]] = d[[3]].astype(float).round(21)
-    d[[0,1]] = d[[0,1]].astype(int)
-    d.to_csv(filename, mode='a', header=False, index=False)
+    rng = range(index+chunk_size, idx.shape[1])
+    _(rng)

@@ -80,8 +80,7 @@ def generatePSNetwork(N:int, avg_k:int, gamma:int, T:int, seed=47, dim=2, **kwar
         #save all hyperbolic distances between new node and other nodes, and sort from shortest to longest
         #this sort method returns a tensor with two sub-tensors: d.values and d.indices (with indices sorted by values)
         temp_cartesian = to_cartesian(data.node_polar_positions[:t+1])
-        print(R_t)
-        d = poincare_dist(temp_cartesian[:t], temp_cartesian[t], max_r=R_t).sort()
+        d = poincare_distance(temp_cartesian[:t], temp_cartesian[t], max_r=R_t).sort()
         #If T = 0, simply connect to the m hyperbolically closest nodes
         if T == 0:
             new_edges = th.stack([d.indices[:m], th.empty(m).fill_(t)])
