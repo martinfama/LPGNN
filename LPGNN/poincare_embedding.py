@@ -5,26 +5,29 @@ import torch_geometric as pyg
 from gensim.models.poincare import PoincareModel
 
 from .distances import to_cartesian, to_spherical
+from .labne import radial_ordering
 
 from .embedding import *
 
 class Model(th.nn.Module):
     """ Incorporates the Poincare embedding into a PyTorch model. """
-    def __init__(self, dim, size, init_weights=1e-3, init_pos=None, epsilon=1e-7):
+    def __init__(self, dim, size, init_weights=1e-3, init_pos=None, epsilon=1e-7, R=1):
         super().__init__()
         self.embedding = th.nn.Embedding(size, dim, sparse=False)
         self.embedding.weight.data.uniform_(-init_weights, init_weights)
         if init_pos is not None:
             self.embedding.weight.data = init_pos
         self.epsilon = epsilon
+        self.R = R
 
     def dist(self, u, v):
         """ Compute the Poincare distance between two vectors. """
-        sqdist = th.sum((u - v) ** 2, dim=-1)
-        squnorm = th.sum(u ** 2, dim=-1)
-        sqvnorm = th.sum(v ** 2, dim=-1)
+        sqdist = th.sum((u - v) ** 2, dim=-1) / self.R**2
+        squnorm = th.sum(u ** 2, dim=-1) / self.R**2
+        sqvnorm = th.sum(v ** 2, dim=-1) / self.R**2
         x = 1 + 2 * sqdist / ((1 - squnorm) * (1 - sqvnorm)) + self.epsilon
         z = th.sqrt(x ** 2 - 1)
+        print(z.shape)
         return th.log(x + z)
 
     def forward(self, inputs):
@@ -87,7 +90,7 @@ class RiemannianSGD(th.optim.Optimizer):
                 
                 p.data.copy_(self.expm(p.data, d_p))
 
-def poincare_embedding(data:pyg.data.Data, edge_index='edge_index', epochs=100, lr = 0.03, init_pos=None, dim=2, expm='approx', pre_norm_radius=False, normalize_radius=False):
+def poincare_embedding(data:pyg.data.Data, edge_index_name='edge_index', epochs=100, lr = 0.03, init_pos=None, dim=2, expm='approx', normalize_radius=False, r_ordering=True, R=1):
     """ Embed a graph using the Poincare embedding.
 
     Args:
@@ -106,19 +109,15 @@ def poincare_embedding(data:pyg.data.Data, edge_index='edge_index', epochs=100, 
 
     th.set_default_dtype(th.float64)
     # get the edge index which we want to use
-    edge_index = getattr(data, edge_index)
+    edge_index = getattr(data, edge_index_name)
     # degrees = pyg.utils.degree(edge_index[0], dtype=th.float64)
     # degrees = degrees / degrees.sum()
     # cat_dist = th.distributions.Categorical(degrees)
     # unif_dist = th.distributions.Categorical(probs=th.ones(data.num_nodes,) / data.num_nodes)
     
-    # pre-normalize the radius of init_pos (if given)
-    if pre_norm_radius and init_pos is not None:
-        init_pos = init_pos / th.norm(init_pos, dim=-1, keepdim=True) * pre_norm_radius
-
-    # create the model
-    model = Model(size=data.num_nodes, init_pos=init_pos, dim=dim)
-    # for optimizer, we use the Riemannian SGD
+    # create the Poincaré Embedding model
+    model = Model(size=data.num_nodes, init_pos=init_pos, dim=dim, R=R)
+    # for gradient optimizer, we use the Riemannian SGD
     optimizer = RiemannianSGD(model.parameters(), expm=expm)
 
     # a simple CrossEntropyLoss is used
@@ -171,7 +170,9 @@ def poincare_embedding(data:pyg.data.Data, edge_index='edge_index', epochs=100, 
     else:
         data_Poincare.PoincareEmbedding_node_positions = model.embedding.weight
     data_Poincare.PoincareEmbedding_node_polar_positions = to_spherical(data_Poincare.PoincareEmbedding_node_positions)
-
+    if r_ordering:
+        data_Poincare.PoincareEmbedding_node_polar_positions[:,0] = radial_ordering(data_Poincare, edge_index_name)
+        data_Poincare.PoincareEmbedding_node_polar_positions = to_cartesian(data_Poincare.PoincareEmbedding_node_polar_positions)
     return data_Poincare
 
 # @embedding

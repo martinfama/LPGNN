@@ -12,4 +12,5 @@ import LPGNN.graph_metrics
 
 import LPGNN.labne
 import LPGNN.poincare_embedding
+import LPGNN.lorentz_embedding
 import LPGNN.tree_pruning

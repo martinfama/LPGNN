@@ -59,9 +59,13 @@ def hyperbolic_distance(u:th.Tensor, v:th.Tensor):
         th.Tensor: A 1D tensor of hyperbolic distances of length N.
     """
 
+    # ensure u,v type is double
+    u = u.double()
+    v = v.double()
+
     # get the angular distance by applying acos() to the dot product of the two vectors
     r_u = th.norm(u, dim=1)
-    r_v = th.norm(v, dim=1)
+    r_v = th.norm(v, dim=-1)
     dot = th.sum(u * v, dim=1)
     angular_distance = th.acos(dot / (r_u * r_v))
     #angular_distance = th.min(2*th.pi-th.abs(u[:,1]-v[:,1]), th.abs(u[:,1]-v[:,1]))
@@ -71,6 +75,11 @@ def hyperbolic_distance(u:th.Tensor, v:th.Tensor):
 
 def poincare_distance(u:th.Tensor, v:th.Tensor, max_r=1):
     """ Compute the Poincare distance between two vectors. """
+
+    # ensure u,v type is double
+    u = u.double()
+    v = v.double()
+
     sqdist = th.sum((u - v) ** 2, dim=-1) 
     squnorm = th.sum(u ** 2, dim=-1)
     sqvnorm = th.sum(v ** 2, dim=-1) 

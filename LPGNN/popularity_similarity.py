@@ -74,13 +74,15 @@ def generatePSNetwork(N:int, avg_k:int, gamma:int, T:int, seed=47, dim=2, **kwar
         R_t = 0
         # If beta == 1, popularity fading is not simulated
         if beta == 1: R_t = 2*r_t
-        elif beta < 1 and T == 0: R_t = 2*r_t - 2*np.log((2*(1 - np.exp(-0.5*(1 - beta)*2*r_t)))/(np.pi*m*(1 - beta))) #[1], Eq. 10
-        else: R_t = 2*r_t - 2*np.log((2*T*(1 - np.exp(-0.5*(1 - beta)*2*r_t)))/(np.sin(T*np.pi)*m*(1 - beta)))         #[1], Eq. 26
+        else: R_t = 2*r_t - 2*np.log((2*(1 - np.exp(-(1 - beta)*r_t)))/(np.pi*m*(1 - beta))) #[1], Eq. 10
+        #elif beta < 1 and T == 0: R_t = 2*r_t - 2*np.log((2*(1 - np.exp(-(1 - beta)*r_t)))/(np.pi*m*(1 - beta))) #[1], Eq. 10
+        #else: R_t = 2*r_t - 2*np.log((2*T*(1 - np.exp(-(1 - beta)*r_t)))/(np.sin(T*np.pi)*m*(1 - beta)))      #[1], Eq. 26
         
         #save all hyperbolic distances between new node and other nodes, and sort from shortest to longest
         #this sort method returns a tensor with two sub-tensors: d.values and d.indices (with indices sorted by values)
         temp_cartesian = to_cartesian(data.node_polar_positions[:t+1])
-        d = poincare_distance(temp_cartesian[:t], temp_cartesian[t], max_r=R_t).sort()
+        # d = poincare_distance(temp_cartesian[:t], temp_cartesian[t], max_r=R_t).sort()
+        d = hyperbolic_distance(temp_cartesian[:t], temp_cartesian[t]).sort()
         #If T = 0, simply connect to the m hyperbolically closest nodes
         if T == 0:
             new_edges = th.stack([d.indices[:m], th.empty(m).fill_(t)])
@@ -90,7 +92,7 @@ def generatePSNetwork(N:int, avg_k:int, gamma:int, T:int, seed=47, dim=2, **kwar
         else:
             # probability that the new node connects to the other nodes in the network
             p = 1 / (1 + th.exp((d.values - R_t)/(2*T)))
-            p = th.nan_to_num(p, nan=0)
+            p = th.nan_to_num(p, nan=0, posinf=0, neginf=0)
             
             # get m nodes to connect to, sampled by the probabilities given by p.values
             selected_nodes = np.random.choice(d.indices.detach().numpy(), size=m, p=(p/th.sum(p)).detach().numpy(), replace=False)
@@ -131,7 +133,7 @@ def drawPSNetwork(PS:pyg.data.Data, **kwargs):
     fig, ax = plt.subplots(figsize=kwargs.get('figsize', (10,10)), subplot_kw=subplot_kw)
     
     edge_index = PS.get(kwargs.get('edge_index', 'edge_index'))
-    PS_nx = nx.Graph(nx.from_edgelist(edge_index.T.detach().numpy()))
+    PS_nx = pyg.utils.to_networkx(PS, to_undirected=True)
     
     # control node size by degree
     #degrees = pyg.utils.degree(PS.edge_index[0]).detach().numpy()
@@ -139,13 +141,13 @@ def drawPSNetwork(PS:pyg.data.Data, **kwargs):
     #min_d = np.min(degrees)
     #node_size = 2*((1000/(1+np.exp( -((degrees-min_d)/(max_d-min_d)-0.6)*0.5 ))) + 10).astype(np.int64)
     
-    named_positions = getattr(PS, kwargs.get('pos_name', 'node_polar_positions')).detach().numpy()
+    named_positions = getattr(PS, kwargs.get('pos_name', 'node_polar_positions'))[:,:2].detach().numpy()
     pos = dict(zip(range(PS.num_nodes), np.flip(named_positions, axis=1)))
 
-    if hasattr(PS, 'node_polar_positions'): node_color = named_positions[:,1]
+    if hasattr(PS, 'node_polar_positions'): node_color = PS.node_polar_positions[:,1].detach().numpy() / (2*np.pi)
     else: node_color = 'cornflowerblue'
 
-    nx.draw(PS_nx, ax=ax, pos=pos, node_color=node_color, cmap='rainbow',
-                          node_size=kwargs.get('node_size', 50), width=0.2, with_labels=kwargs.get('with_labels', False))
+    nx.draw(PS_nx, node_color=node_color, pos=pos, cmap='hsv',
+                          node_size=kwargs.get('node_size', 50), width=0.2, with_labels=kwargs.get('with_labels', False), ax=ax)
 
     return fig, ax
