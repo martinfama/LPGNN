@@ -8,6 +8,7 @@ to save to file, read from file, etc. All inputs and outputs are given as pytorc
 from typing import Optional
 import pandas as pd
 import torch as th
+from .Logger import print
 
 def to_spherical(u:th.Tensor):
     """ Assumes a N-dimensional vector in cartesian coordinates (x_1, x_2, ..., x_n).
@@ -73,6 +74,31 @@ def hyperbolic_distance(u:th.Tensor, v:th.Tensor):
     d = th.arccosh(th.cosh(r_u)*th.cosh(r_v) - th.sinh(r_u)*th.sinh(r_v)*th.cos(angular_distance))
     return d
 
+def hyperbolic_distance_from_spherical_2D(u:th.Tensor, v:th.Tensor):
+    """ Calculates hyperbolic distances between positions given as a list of [r, theta] values.
+        Uses idx to indicate which positions to compare.
+
+    Args:
+        positions (th.Tensor): A list of [r,theta] values
+        idx (th.Tensor): A tensor of shape [N,2] indicating the combination of positions to compare.
+
+    Returns:
+        th.Tensor: A 1D tensor of hyperbolic distances of length N.
+    """
+
+    # ensure u,v type is double
+    u = u.double()
+    v = v.double()
+
+    # since u and v are of the form [r, theta], we can use the following formula to calculate the
+    # hyperbolic distance between them
+    angular_distance = th.min(2*th.pi-th.abs(u[:,1]-v[:,1]), th.abs(u[:,1]-v[:,1]))
+    r_u = u[:,0]
+    r_v = v[:,0]
+
+    d = th.arccosh(th.cosh(r_u)*th.cosh(r_v) - th.sinh(r_u)*th.sinh(r_v)*th.cos(angular_distance))
+    return d
+
 def poincare_distance(u:th.Tensor, v:th.Tensor, max_r=1):
     """ Compute the Poincare distance between two vectors. """
 
@@ -91,6 +117,36 @@ def poincare_distance(u:th.Tensor, v:th.Tensor, max_r=1):
     # sqvnorm = max_r**2 - th.sum(v ** 2, dim=-1)
     
     # return th.arccosh(1 + 2 * sqdist / (squnorm * sqvnorm))
+
+def gen_dist_list(positions:th.Tensor, dist='hyp'):
+    """ Calculates _all_ hyperbolic distances by comparing all positions. Since the memory overhead
+        can become huge for moderately large graphs (more than 10.000 nodes), we save these values to
+        a file in chunks. The save format is:
+            idx_1, idx_2, distance
+            (int), (int), (float)
+             ... ,  ... ,   ...
+        where idx_1 and idx_2 are the indices of the positions compared, and distance is the hyperbolic distance.
+
+    Args:
+        positions (th.Tensor): The list of positions given as [r,theta] values
+        chunk_size (int): What length lists we should save in.
+        filename (str): File to save to.
+        extra_info_tensor (th.Tensor, optional): A tensor of extra information to save to file. Defaults to None. Implemented to save the edge labels (i.e. 0 or 1).
+        skip_index (th.Tensor, optional): A tensor of indices to skip. Defaults to None.
+        dist (str, optional): The distance metric to use. Defaults to 'poincare'. Options are 'poincare' and 'hyp'.
+    """
+
+    if dist == 'poincare': dist_func = poincare_distance
+    elif dist == 'hyp': dist_func = hyperbolic_distance
+    elif dist == 'hyp_spherical': dist_func = hyperbolic_distance_from_spherical_2D
+
+    N = positions.shape[0]
+    # change positions type to th.DoubleTensor
+    positions = positions.double()
+    
+    idx = th.triu_indices(*(N, N), offset=1)
+    d = dist_func(positions[idx[0]], positions[idx[1]])
+    return d, idx
 
 def hyperbolic_distance_list_to_file(positions:th.Tensor, chunk_size:int, filename:str, extra_info_tensor:Optional[th.Tensor] = None, skip_index:Optional[th.Tensor] = None, dist='poincare'):
     """ Calculates _all_ hyperbolic distances by comparing all positions. Since the memory overhead
@@ -112,6 +168,7 @@ def hyperbolic_distance_list_to_file(positions:th.Tensor, chunk_size:int, filena
 
     if dist == 'poincare': dist_func = poincare_distance
     elif dist == 'hyp': dist_func = hyperbolic_distance
+    elif dist == 'hyp_spherical': dist_func = hyperbolic_distance_from_spherical_2D
 
     N = positions.shape[0]
     # change positions type to th.DoubleTensor

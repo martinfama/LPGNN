@@ -2,12 +2,17 @@ from tqdm import tqdm
 import numpy as np
 import torch as th
 import torch_geometric as pyg
-from gensim.models.poincare import PoincareModel
 
 from .distances import to_cartesian, to_spherical
 from .labne import radial_ordering
 
 from .embedding import *
+
+from .utils import get_ram
+
+from .Logger import print
+
+import copy
 
 class Model(th.nn.Module):
     """ Incorporates the Poincare embedding into a PyTorch model. """
@@ -27,7 +32,6 @@ class Model(th.nn.Module):
         sqvnorm = th.sum(v ** 2, dim=-1) / self.R**2
         x = 1 + 2 * sqdist / ((1 - squnorm) * (1 - sqvnorm)) + self.epsilon
         z = th.sqrt(x ** 2 - 1)
-        print(z.shape)
         return th.log(x + z)
 
     def forward(self, inputs):
@@ -90,7 +94,7 @@ class RiemannianSGD(th.optim.Optimizer):
                 
                 p.data.copy_(self.expm(p.data, d_p))
 
-def poincare_embedding(data:pyg.data.Data, edge_index_name='edge_index', epochs=100, lr = 0.03, init_pos=None, dim=2, expm='approx', normalize_radius=False, r_ordering=True, R=1):
+def poincare_embedding(data:pyg.data.Data, edge_index_name='edge_index', epochs=100, lr = 0.03, init_pos=None, dim=2, expm='approx', normalize_radius=False, epochs_per_r_order=False, final_r_order=True, R=1):
     """ Embed a graph using the Poincare embedding.
 
     Args:
@@ -115,6 +119,8 @@ def poincare_embedding(data:pyg.data.Data, edge_index_name='edge_index', epochs=
     # cat_dist = th.distributions.Categorical(degrees)
     # unif_dist = th.distributions.Categorical(probs=th.ones(data.num_nodes,) / data.num_nodes)
     
+    print('          Creating model...')
+    get_ram(strt='          RAM: ')
     # create the Poincaré Embedding model
     model = Model(size=data.num_nodes, init_pos=init_pos, dim=dim, R=R)
     # for gradient optimizer, we use the Riemannian SGD
@@ -126,7 +132,19 @@ def poincare_embedding(data:pyg.data.Data, edge_index_name='edge_index', epochs=
     # pyg.loader.NeighborSampler is used to sample neighbors of nodes
     neighbor_sampler = pyg.loader.NeighborSampler(edge_index, sizes=[-1])
     
-    for epoch in tqdm(range(epochs)):
+    print('          Starting training...')
+    import time
+    t_i = time.time()
+    t_f = t_i
+    
+    if epochs_per_r_order is not False: 
+        r_order = True
+        e_r_counter = epochs_per_r_order
+        r, gamma = radial_ordering(data, 'edge_index')
+
+    else: r_order = False
+    
+    for epoch in range(epochs):
         
         #for random_node in np.arange(data.num_nodes):
         # get a random node
@@ -154,7 +172,6 @@ def poincare_embedding(data:pyg.data.Data, edge_index_name='edge_index', epochs=
             neg_nodes = neg_nodes[th.multinomial(weight, pos_edges.shape[1], replacement=False)].long()
             # set the third column to be the negative samples
             batch_X[:,2] = neg_nodes.T
-            
             # apply update step to the model
             optimizer.zero_grad()
             preds = model(batch_X)
@@ -163,16 +180,44 @@ def poincare_embedding(data:pyg.data.Data, edge_index_name='edge_index', epochs=
             optimizer.step(lr=lr)
         except:
             pass
+        
+        if r_order:
+            if e_r_counter == 0:
+                
+                polar_pos = to_spherical(model.embedding.weight.data)
+                r_max = polar_pos[:, 0].max()
+                # scale from [r.min(), r.max()] to [., r_max]
+                r_ = r*r_max/r.max()
+                # reshape r to be [num_nodes, 1]
+                polar_pos[:, 0] = r_
+                model.embedding.weight.data = to_cartesian(polar_pos)
+                
+                e_r_counter = epochs_per_r_order
 
-    data_Poincare = data.clone()
+                dt = time.time() - t_f
+                t_f = time.time()
+                e_per_sec = epochs_per_r_order / dt
+                print(f'\r          Epoch: {epoch:09}/{epochs:09} (e/s={e_per_sec:.2f}), Loss: {loss.item():.4f}', end=', ')
+                get_ram(strt='RAM: ', end='')
+                print(f'          total time: {time.time() - t_i:.2f} s', end='')
+                print(f'          est. time: {(epochs-epoch)/e_per_sec:.2f} s', end='')
+            e_r_counter -= 1
+            
+
+    print('          Finished training...')
+    get_ram(strt='          RAM: ')
+    print('          Creating new pyg data object...')
+    data_Poincare = copy.deepcopy(data)
     if normalize_radius:
         data_Poincare.PoincareEmbedding_node_positions = model.embedding.weight / model.embedding.weight.norm(dim=1, keepdim=True) * normalize_radius
     else:
         data_Poincare.PoincareEmbedding_node_positions = model.embedding.weight
     data_Poincare.PoincareEmbedding_node_polar_positions = to_spherical(data_Poincare.PoincareEmbedding_node_positions)
-    if r_ordering:
-        data_Poincare.PoincareEmbedding_node_polar_positions[:,0] = radial_ordering(data_Poincare, edge_index_name)
-        data_Poincare.PoincareEmbedding_node_polar_positions = to_cartesian(data_Poincare.PoincareEmbedding_node_polar_positions)
+    if final_r_order:
+        data_Poincare.PoincareEmbedding_node_polar_positions[:,0], gamma = radial_ordering(data_Poincare, edge_index_name)
+        data_Poincare.PoincareEmbedding_node_positions = to_cartesian(data_Poincare.PoincareEmbedding_node_polar_positions)
+    print('          Finished creating new pyg data object...')
+    get_ram(strt='          RAM: ')
     return data_Poincare
 
 # @embedding

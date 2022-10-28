@@ -11,6 +11,9 @@ import torch_geometric as pyg
 from .distances import *
 from .graph_metrics import *
 
+from .utils import get_ram
+from .Logger import print
+
 
 def plot_pr_curves(PR_list, save_name=''):
     ## Plot results, and log
@@ -109,7 +112,7 @@ def sort_distance_file(filename, sort_dir='asc'):
     else: sort_dir = 'r'
     os.system(f"LC_ALL=C sort -t',' -gs{sort_dir}k4 {filename} -o {filename}_sorted")
 
-def precision_recall_score_file(data:pyg.data.Data, position_name:str, filename:str, chunk_size=10000, step_size=1, skip_file_prep=False, dist='poincare'):
+def precision_recall_score(data:pyg.data.Data, position_name:str, step_size=1, dist='hyp', log_start=''):
     """ Generates a Precision-Recall curve, given a file of sorted scores.
 
     Args:
@@ -124,8 +127,90 @@ def precision_recall_score_file(data:pyg.data.Data, position_name:str, filename:
     total_test_edges = data.test_pos_edge_label_index.shape[1]
     
     N = data.num_nodes
+
+    print(log_start+'Starting PR analysis...')
+    get_ram(strt=log_start+'RAM: ')
+
+    print(log_start+'Generating hyperbolic distances...')
+    d, idx = gen_dist_list(getattr(data, position_name))
+    get_ram(strt=log_start+'RAM: ')
+    print(log_start+'Sorting...')
+    d = d.sort()
+    get_ram(strt=log_start+'RAM: ')
+    
+    print(log_start+'Generating test mask...')
+    test_mask = th.zeros( N*(N-1)//2 )
+    def d2_index_to_d1(i, j, N):
+        """ Convert a 2D index to a 1D index, considering the upper triangular matrix (main diagonal not included). """
+        # convert a 2d index to a 1d index, considering the upper triangular matrix (main diagonal not included)
+        return i*N - th.div(i*(i+1), 2, rounding_mode='floor') + j - i - 1
+        #return i*N + j - (i+1)*(i+2)/2
+    # Set the test mask, which is passed to `hyperbolic_distance_list_to_file` to save if edge exists alongside the distance
+    test_mask_idx = d2_index_to_d1(data.test_pos_edge_label_index[0], data.test_pos_edge_label_index[1], N).type(th.long)
+    test_mask[test_mask_idx] = 1
+    get_ram(strt=log_start+'RAM: ')
+    
+    print(log_start+'Generating t_diff from test mask...')
+    t_diff = th.where(test_mask==1)[0]
+    del(test_mask)
+    get_ram(strt=log_start+'RAM: ')
+    
+    tp = 0
+    fp = 0
+    R = 0
+    P = 0
+    R_list = []
+    P_list = []
+
+    print(log_start+'Reading file and generating precision-recall curve...')
+    for i in range(t_diff.shape[0]):
+        tp += 1
+        fp += t_diff[i].item()
+        P = tp/(tp+fp)
+        R = tp/total_test_edges
+        R_list.append(R)
+        P_list.append(P)
+
+    # # read the file in chunks
+    # for step_index in range(0, d.values.shape[0], step_size):
+    #     print(step_index, d.values.shape[0])
+    #     # get the 3rd column, which is indicates whether the edge exists in the test set
+    #     test_col = test_mask[d.indices[step_index:step_index+step_size]]
+    #     tp_ = test_col.sum() # number of true positives in this chunk
+    #     tp += tp_ # add to the total number of true positives
+    #     fp += test_col.shape[0] - tp_ # add to the total number of false positives
+    #     P = tp / (tp + fp) 
+    #     R = tp / total_test_edges
+    #     #print('\r'+log_start+f"index: {step_index:06}, R: {R:.3f}, P: {P:.3f}", end=', ')
+    #     #get_ram(strt='RAM: ', end='')
+    #     R_list.append(R)
+    #     P_list.append(P)
+    #     # if all positive test cases have been accounted for (i.e. R = 1), break
+    #     if tp == total_test_edges: return R_list, P_list
+
+    return R_list, P_list
+
+def precision_recall_score_file(data:pyg.data.Data, position_name:str, filename:str, chunk_size=10000, step_size=1, skip_file_prep=False, dist='poincare', log_start='   ', ):
+    """ Generates a Precision-Recall curve, given a file of sorted scores.
+
+    Args:
+        data (pyg.data.Data): The graph to analyze. Is assumed to contain train and test masks.
+        filename (str): The file to read predictions from. The file should be in the format of a list of 3-tuples, each containing i,j node indices and the corresponding score.
+
+    Returns:
+        tuple: a tuple given by (R, P, predictions) where R is the recall, P is the precision
+               and predictions is the list of predictions.
+    """
+
+    total_test_edges = data.test_pos_edge_label_index.shape[1]
+    
+    N = data.num_nodes
+
+    print(log_start+'Starting PR analysis...')
+    get_ram(strt=log_start+'RAM: ')
+
     if not skip_file_prep:
-        print('Generating test mask...')
+        print(log_start+'Generating test mask...')
         test_mask = th.zeros( N*(N-1)//2 )
         def d2_index_to_d1(i, j, N):
             """ Convert a 2D index to a 1D index, considering the upper triangular matrix (main diagonal not included). """
@@ -135,12 +220,15 @@ def precision_recall_score_file(data:pyg.data.Data, position_name:str, filename:
         # Set the test mask, which is passed to `hyperbolic_distance_list_to_file` to save if edge exists alongside the distance
         test_mask_idx = d2_index_to_d1(data.test_pos_edge_label_index[0], data.test_pos_edge_label_index[1], N).type(th.long)
         test_mask[test_mask_idx] = 1
-        print("Total test mask: ", test_mask.sum(), " . Total test edges: ", total_test_edges)
+        print(log_start+"Total test mask: ", test_mask.sum(), " . Total test edges: ", total_test_edges)
+        get_ram(strt=log_start+'RAM: ')
         # save the predictions to a file, and sort it
-        print('Generating hyperbolic distances and saving to file ', filename)
+        print(log_start+'Generating hyperbolic distances and saving to file ', filename)
         hyperbolic_distance_list_to_file(getattr(data, position_name), chunk_size=chunk_size, filename=filename, extra_info_tensor=test_mask, dist=dist)
-        print('Sorting file...')
+        get_ram(strt=log_start+'RAM: ')
+        print(log_start+'Sorting file...')
         sort_distance_file(filename, sort_dir='asc')
+        get_ram(strt=log_start+'RAM: ')
 
     tp = 0
     fp = 0
@@ -149,7 +237,7 @@ def precision_recall_score_file(data:pyg.data.Data, position_name:str, filename:
     R_list = []
     P_list = []
 
-    print('Reading file and generating precision-recall curve...')
+    print(log_start+'Reading file and generating precision-recall curve...')
     # read the file in chunks
     index = 0
     for chunk in pd.read_csv(filename+'_sorted', header=None, chunksize=step_size, iterator=True):
@@ -160,7 +248,7 @@ def precision_recall_score_file(data:pyg.data.Data, position_name:str, filename:
         fp += chunk.shape[0] - tp_ # add to the total number of false positives
         P = tp / (tp + fp) 
         R = tp / total_test_edges
-        print(f"\rindex: {index}, R: {R:.3f}, P: {P:.3f}", end='')
+        print(f"\r{log_start}index: {index}, R: {R:.3f}, P: {P:.3f}", end='')
         R_list.append(R)
         P_list.append(P)
         # if all positive test cases have been accounted for (i.e. R = 1), break

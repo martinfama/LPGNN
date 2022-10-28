@@ -2,3 +2,7 @@ __pycache__/
 *.png
 *.csv
 *.txt
+Latex/
+ClusterMaestria/
+data/Distance_Lists/
+figs/animations/

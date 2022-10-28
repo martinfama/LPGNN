@@ -59,15 +59,7 @@ def generateLaBNE(data:pyg.data.Data, edge_index='edge_index', only_coordinates=
     x_LE_cartesian = th.Tensor(eigenvectors[:,1:])
 
     x_polar = to_spherical(x_LE_cartesian)
-    r = th.zeros(N)
-    degrees = pyg.utils.degree(getattr(data, edge_index)[0])
-    # sort degrees for radial positioning
-    degrees = degrees.sort(descending=True)
-    gamma = infer_gamma(data).power_law.alpha
-    beta = 1/(gamma-1)
-    for t in range(N):
-        r_t = np.log(t+1)
-        r[degrees.indices[t]] = 2*beta*r_t + 2*(1-beta)*np.log(N) 
+    r, gamma = radial_ordering(data, edge_index=edge_index)
     # normalize r to normalize_radius
     if type(normalize_radius) == float:
         r = r * normalize_radius / r.max()
@@ -79,6 +71,7 @@ def generateLaBNE(data:pyg.data.Data, edge_index='edge_index', only_coordinates=
         return x_LE_cartesian, x_LaBNE_cartesian, x_polar
 
     data_LaBNE = data.clone()
+    data_LaBNE.gamma = gamma
     data_LaBNE.LaplacianEigenmaps_node_positions = x_LE_cartesian
     data_LaBNE.LaBNE_node_polar_positions = x_polar
     data_LaBNE.LaBNE_node_positions = x_LaBNE_cartesian
@@ -89,7 +82,7 @@ def radial_ordering(data:pyg.data.Data, edge_index='edge_index'):
 
     N = data.num_nodes
     r = th.zeros(N)
-    degrees = pyg.utils.degree(getattr(data, edge_index)[0])
+    degrees = pyg.utils.degree(getattr(data, edge_index)[0], N)
     # sort degrees for radial positioning
     degrees = degrees.sort(descending=True)
     gamma = infer_gamma(data).power_law.alpha
@@ -97,4 +90,4 @@ def radial_ordering(data:pyg.data.Data, edge_index='edge_index'):
     for t in range(N):
         r_t = np.log(t+1)
         r[degrees.indices[t]] = 2*beta*r_t + 2*(1-beta)*np.log(N)
-    return r
+    return r, gamma

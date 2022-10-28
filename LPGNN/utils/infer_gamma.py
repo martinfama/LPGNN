@@ -12,5 +12,5 @@ def infer_gamma(data:pyg.data.Data, **kwargs):
         powerlaw.Fit: The calculated gamma and amplitude factor of powerlaw.
     """
 
-    fit = powerlaw.Fit(pyg.utils.degree(data.edge_index[0]), discrete=True, **kwargs)
+    fit = powerlaw.Fit(pyg.utils.degree(data.edge_index[0]), discrete=True, verbose=False, **kwargs)
     return fit
